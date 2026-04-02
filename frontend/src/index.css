@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-athen-bg: #0f172a;
+  --color-athen-card: #1e293b;
+  --color-athen-blue: #3b82f6;
+  --color-athen-green: #10b981;
+}
+
+html {
+  font-size: 16.5px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-athen-bg);
+  color: #f8fafc;
+}
+
+/* thin scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}

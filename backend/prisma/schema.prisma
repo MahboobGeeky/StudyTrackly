@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserSettings {
+  id              Int      @id @default(1)
+  email           String   @default("student@example.com")
+  displayName     String   @default("Student")
+  trialEnd        DateTime?
+  academicLevel   String?
+  timerVolume     Float    @default(0.45)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Term {
+  id               String    @id @default(cuid())
+  name             String
+  startDate        DateTime
+  endDate          DateTime
+  studyGoalHours   Int       @default(600)
+  dailyGoalMinutes Int       @default(720)
+  examCount        Int       @default(0)
+  goldMedals       Int       @default(0)
+  silverMedals     Int       @default(0)
+  bronzeMedals     Int       @default(0)
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  courses          Course[]
+  sessions         Session[]
+  exams            Exam[]
+  dataRoomFiles    DataRoomFile[]
+  dayGoalOverrides DayGoalOverride[]
+}
+
+model DayGoalOverride {
+  id          String @id @default(cuid())
+  termId      String
+  term        Term   @relation(fields: [termId], references: [id], onDelete: Cascade)
+  dateKey     String
+  goalMinutes Int
+
+  @@unique([termId, dateKey])
+  @@index([termId])
+}
+
+model Course {
+  id        String    @id @default(cuid())
+  termId    String
+  term      Term      @relation(fields: [termId], references: [id], onDelete: Cascade)
+  name      String
+  color     String    @default("blue")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions  Session[]
+
+  @@index([termId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  termId       String
+  term         Term     @relation(fields: [termId], references: [id], onDelete: Cascade)
+  courseId     String
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  date         DateTime
+  startTime    String
+  endTime      String
+  breakMinutes Int      @default(0)
+  activity     String   @default("")
+  note         String   @default("")
+  label        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([termId])
+  @@index([courseId])
+  @@index([date])
+}
+
+model Exam {
+  id        String   @id @default(cuid())
+  termId    String
+  term      Term     @relation(fields: [termId], references: [id], onDelete: Cascade)
+  name      String
+  date      DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([termId])
+}
+
+model DataRoomFile {
+  id        String   @id @default(cuid())
+  termId    String
+  term      Term     @relation(fields: [termId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([termId])
+}
+
+model ActivityTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
