@@ -26,7 +26,7 @@ export function DashboardPage() {
     void api<{ weekdays: RadarPoint[] }>("/api/stats/weekday-radar").then((r) =>
       setRadar(r.weekdays)
     );
-  }, [stats?.totals.sessionCount]);
+  }, [stats?.totals?.sessionCount]);
 
   const lineData = useMemo(
     () =>
@@ -38,10 +38,20 @@ export function DashboardPage() {
   );
 
   const dailyGoal = stats?.term?.dailyGoalMinutes ?? 720;
-  const todayM = stats?.totals.todayMinutes ?? 0;
+  const todayM = stats?.totals?.todayMinutes ?? 0;
+  const elapsedDays = stats?.progress?.elapsedDays ?? 1;
   const dayPct = dailyGoal > 0 ? Math.min(100, (todayM / dailyGoal) * 100) : 0;
 
   const maxRadar = Math.max(1, ...radar.map((x) => x.hours));
+
+  if (!stats) {
+    return (
+      <>
+        <Header title="Dashboard" stats={null} />
+        <main className="flex-1 p-6 text-center text-slate-400">Loading stats...</main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -51,9 +61,9 @@ export function DashboardPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Today", m: stats?.totals.todayMinutes ?? 0 },
-                { label: "Week", m: stats?.totals.weekMinutes ?? 0 },
-                { label: "Month", m: stats?.totals.weekMinutes ?? 0 },
+                { label: "Today", m: stats?.totals?.todayMinutes ?? 0 },
+                { label: "Week", m: stats?.totals?.weekMinutes ?? 0 },
+                { label: "Month", m: stats?.totals?.weekMinutes ?? 0 },
               ].map((x) => (
                 <div
                   key={x.label}
@@ -138,7 +148,7 @@ export function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-[0.8125rem] text-slate-500">Sessions</p>
-                  <p className="mt-1 font-semibold">{stats?.totals.sessionCount ?? 0}</p>
+                  <p className="mt-1 font-semibold">{stats?.totals?.sessionCount ?? 0}</p>
                 </div>
               </div>
               <div className="mt-4 space-y-2">
@@ -157,13 +167,13 @@ export function DashboardPage() {
                 <div>
                   <div className="flex justify-between text-[0.8125rem] text-slate-500">
                     <span>Time elapsed (term)</span>
-                    <span>{(stats?.progress.timeElapsedPct ?? 0).toFixed(1)}%</span>
+                    <span>{(stats?.progress?.timeElapsedPct ?? 0).toFixed(1)}%</span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-800">
                     <div
                       className="h-full rounded-full bg-slate-200"
                       style={{
-                        width: `${Math.min(100, stats?.progress.timeElapsedPct ?? 0)}%`,
+                        width: `${Math.min(100, stats?.progress?.timeElapsedPct ?? 0)}%`,
                       }}
                     />
                   </div>
@@ -212,8 +222,8 @@ export function DashboardPage() {
           <div className="space-y-4">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
               <p className="text-[0.9375rem] font-medium">
-                Study days • {stats?.progress.distinctStudyDays ?? 0}/
-                {stats?.progress.studyDaysTarget ?? 1}
+                Study days • {stats?.progress?.distinctStudyDays ?? 0}/
+                {stats?.progress?.studyDaysTarget ?? 1}
               </p>
               <p className="mt-2 text-[0.8125rem] text-amber-300">Pace • Falling behind</p>
               <div className="mt-3 flex gap-1">
@@ -221,7 +231,7 @@ export function DashboardPage() {
                   <span
                     key={i}
                     className={`h-2.5 flex-1 rounded-full ${
-                      i < (stats?.progress.distinctStudyDays ?? 0)
+                      i < (stats?.progress?.distinctStudyDays ?? 0)
                         ? "bg-emerald-500"
                         : "bg-slate-800"
                     }`}
@@ -231,10 +241,7 @@ export function DashboardPage() {
               <p className="mt-3 text-[0.8125rem] text-slate-500">
                 Current pace:{" "}
                 {formatMinutes(
-                  Math.round(
-                    (stats?.totals.totalMinutes ?? 0) /
-                      Math.max(1, stats?.progress.elapsedDays ?? 1)
-                  )
+                  Math.round((stats?.totals?.totalMinutes ?? 0) / elapsedDays)
                 )}{" "}
                 / day
               </p>

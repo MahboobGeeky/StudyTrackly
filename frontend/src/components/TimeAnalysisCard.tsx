@@ -46,7 +46,12 @@ export function TimeAnalysisCard() {
     }));
   }, [tab, mode, weekdays, buckets]);
 
-  const maxVal = Math.max(1, ...radarData.map((x) => x.value));
+  const safeRadarData = radarData.map((x) => ({
+    name: String(x.name ?? ""),
+    value: Number.isFinite(x.value) ? x.value : 0,
+  }));
+
+  const maxVal = Math.max(1, ...safeRadarData.map((x) => x.value));
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
@@ -106,26 +111,32 @@ export function TimeAnalysisCard() {
       )}
 
       <div className="mt-4 h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-            <PolarGrid stroke="#334155" />
-            <PolarAngleAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, maxVal * 1.15]}
-              tick={{ fill: "#64748b", fontSize: 10 }}
-            />
-            <Radar
-              name="hours"
-              dataKey="value"
-              stroke="#3b82f6"
-              fill="#3b82f6"
-              fillOpacity={0.35}
-              strokeWidth={2}
-              dot={{ r: 3 }}
-            />
-          </RadarChart>
-        </ResponsiveContainer>
+        {safeRadarData.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-[0.8125rem] text-slate-500">
+            No data yet
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart cx="50%" cy="50%" outerRadius="75%" data={safeRadarData}>
+              <PolarGrid stroke="#334155" />
+              <PolarAngleAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+              <PolarRadiusAxis
+                angle={90}
+                domain={[0, maxVal * 1.15]}
+                tick={{ fill: "#64748b", fontSize: 10 }}
+              />
+              <Radar
+                name="hours"
+                dataKey="value"
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.35}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+              />
+            </RadarChart>
+          </ResponsiveContainer>
+        )}
       </div>
       <p className="text-center text-[0.7rem] text-slate-600">Scale 0 – {maxVal.toFixed(1)}h</p>
     </div>

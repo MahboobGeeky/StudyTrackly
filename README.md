@@ -1,12 +1,12 @@
-# StudyTrackly Clone — Study Tracker (Full Stack)
+# StudyTrackly — Study Tracker (Full Stack)
 
-A local-first study tracker inspired by modern study dashboards: dashboards, sessions, courses, terms, calendar views, data room links, trophies/medals, and settings. **All data is stored in a SQLite database** on your machine via a small **Node.js + Express + Prisma** API. The **React + Vite + Tailwind** frontend talks to that API.
+A study tracker inspired by modern study dashboards: dashboards, sessions, courses, terms, calendar views, and charts. **All data is stored in MongoDB Atlas** and scoped per user using **JWT authentication**. The **React + Vite + Tailwind** frontend talks to a **Node.js + Express + MongoDB** API.
 
 ## Project layout
 
 ```
 athenify-clone/
-├── backend/          # Express API + Prisma + SQLite
+├── backend/          # Express API + MongoDB Atlas + JWT
 ├── frontend/         # React + Vite + Tailwind + Recharts
 ├── README.md
 └── athenify-clone-fullstack.zip   # optional archive (no node_modules/dist); run npm install in each folder
@@ -18,45 +18,64 @@ A ready-made archive **`athenify-clone-fullstack.zip`** in this folder contains 
 
 - **Node.js** 20+ (includes `npm`)
 - **npm** 10+
+- A **MongoDB Atlas** connection string (or any MongoDB URI)
 
-## Setup in VS Code (recommended)
-1. Open this folder in VS Code (File → Open Folder…).
-2. In the VS Code terminal, run the backend in the `backend/` folder:
-   ```bash
-   cd backend
-   npm install
-   npx prisma generate
-   npx prisma db push
-   npx prisma db seed
-   npm run dev
-   ```
-   The API runs at `http://localhost:4000`.
-3. Open a second terminal in VS Code (Terminal → New Terminal), then run the frontend in `frontend/`:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   Open `http://localhost:5173`.
-4. If the frontend can’t reach the API, verify the backend is still running and that ports `4000` and `5173` are free.
+## Setup & run (VS Code)
 
-## Quick start
+### 1) Open project
+- VS Code → **File → Open Folder…** → select `athenify-clone`
 
-### 1. Backend
+### 2) Backend env
+Create `backend/.env`:
+
+```bash
+MONGO_URI="your-mongodb-atlas-uri"
+JWT_SECRET="your-very-long-random-secret"
+JWT_EXPIRES_IN="7d"
+PORT=4000
+# Optional for deployment (comma-separated):
+# CORS_ORIGIN="http://localhost:5173,https://your-frontend-domain.com"
+```
+
+### 3) Start backend (Terminal 1)
 
 ```bash
 cd backend
 npm install
-npx prisma generate
-npx prisma db push
-npx prisma db seed
+npm run dev
+```
+
+API: `http://localhost:4000`  
+Health check: `curl http://localhost:4000/api/health`
+
+### 4) Start frontend (Terminal 2)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`
+
+### 5) Create account / sign in
+- Go to `http://localhost:5173/signup` to create an account (name, email, password)
+- Then sign in at `http://localhost:5173/signin`
+
+Your data is stored in MongoDB and will still be there after you close the app. Signing in with the same email shows the same profile/data.
+
+## Quick start (CLI)
+
+### 1. Backend (MongoDB + JWT)
+
+```bash
+cd backend
+npm install
 npm run dev
 ```
 
 The API listens on **http://localhost:4000**. Health check: `curl http://localhost:4000/api/health`
-
-- Database file: `backend/prisma/dev.db` (SQLite). Delete it and run `npx prisma db push` and `npx prisma db seed` again to reset demo data.
-- Optional: edit `backend/.env` (`DATABASE_URL`).
+Configure `backend/.env` before running (see above).
 
 ### 2. Frontend (new terminal)
 
@@ -68,9 +87,9 @@ npm run dev
 
 Open **http://localhost:5173**. The Vite dev server **proxies** `/api` to `http://localhost:4000`, so you do not need CORS configuration for local development.
 
-### 3. Optional profile screen
-
-Visit **http://localhost:5173/login** to set display name and email (stored via `/api/settings`). The app defaults to the dashboard at `/dashboard`.
+### 3. Auth
+- Sign up: `http://localhost:5173/signup`
+- Sign in: `http://localhost:5173/signin`
 
 ## Production build
 
@@ -112,26 +131,28 @@ If the same origin serves both (e.g. reverse proxy), you can leave `VITE_API_URL
 
 ## API overview (REST)
 
+- `POST /api/auth/signup` (name, email, password) → JWT token
+- `POST /api/auth/signin` (email, password) → JWT token
 - `GET/POST/PATCH/DELETE /api/terms` — terms; `GET /api/terms/active`; `POST /api/terms/:id/activate`
 - `GET/POST/PATCH/DELETE /api/courses?termId=`
 - `GET/POST/PATCH/DELETE /api/sessions?termId=`
-- `GET/POST/PATCH/DELETE /api/exams?termId=`
-- `GET/POST/DELETE /api/data-room?termId=`
 - `GET /api/study-days?termId=` (calendar table rows with duration, goal, gap, share price, progress)
 - `POST /api/study-days/adjust-goal` (adjust goal by +/- minutes)
-- `GET/PATCH /api/settings`
-- `GET/POST/DELETE /api/activities`
+- `GET/PATCH /api/settings` (profile + timer volume)
 - `GET /api/stats/dashboard`
 - `GET /api/stats/weekday-radar` (radar: weekdays)
 - `GET /api/stats/time-buckets` (radar: time of day)
 - `GET /api/stats/daily-stacked` (stacked bars: total study hours per day, by course)
+
+All routes except `/api/health` and `/api/auth/*` require:
+`Authorization: Bearer <token>`
 
 ## Tech stack
 
 | Layer | Stack |
 |--------|--------|
 | Frontend | React 19, Vite 6, Tailwind CSS 4, React Router 7, Recharts, Lucide React, date-fns |
-| Backend | Express, Prisma ORM, SQLite, Zod (ready for validation extensions) |
+| Backend | Express, MongoDB Atlas (Mongoose), JWT, bcrypt, Zod |
 
 ## Legal
 

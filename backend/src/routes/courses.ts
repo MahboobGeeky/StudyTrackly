@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma.js";
+import type { AuthedRequest } from "../middleware/auth.js";
+import { Course } from "../models/Course.js";
 
 const router = Router();
 
@@ -12,11 +13,11 @@ const body = z.object({
 
 router.get("/", async (req, res, next) => {
   try {
+    const authed = req as AuthedRequest;
     const termId = req.query.termId as string | undefined;
-    const courses = await prisma.course.findMany({
-      where: termId ? { termId } : undefined,
-      orderBy: { name: "asc" },
-    });
+    const query: Record<string, unknown> = { userId: authed.userId };
+    if (termId) query.termId = termId;
+    const courses = await Course.find(query).sort({ name: 1 }).lean();
     res.json(courses);
   } catch (e) {
     next(e);
@@ -25,13 +26,13 @@ router.get("/", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
+    const authed = req as AuthedRequest;
     const data = body.parse(req.body);
-    const course = await prisma.course.create({
-      data: {
-        termId: data.termId,
-        name: data.name,
-        color: data.color ?? "blue",
-      },
+    const course = await Course.create({
+      userId: authed.userId,
+      termId: data.termId,
+      name: data.name,
+      color: data.color ?? "blue",
     });
     res.status(201).json(course);
   } catch (e) {
@@ -41,11 +42,14 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
   try {
+    const authed = req as AuthedRequest;
     const data = body.omit({ termId: true }).partial().parse(req.body);
-    const course = await prisma.course.update({
-      where: { id: req.params.id },
+    const course = await Course.findOneAndUpdate(
+      { _id: req.params.id, userId: authed.userId },
       data,
-    });
+      { new: true }
+    ).lean();
+    if (!course) return res.status(404).json({ error: "Course not found" });
     res.json(course);
   } catch (e) {
     next(e);
@@ -54,7 +58,8 @@ router.patch("/:id", async (req, res, next) => {
 
 router.delete("/:id", async (req, res, next) => {
   try {
-    await prisma.course.delete({ where: { id: req.params.id } });
+    const authed = req as AuthedRequest;
+    await Course.deleteOne({ _id: req.params.id, userId: authed.userId });
     res.status(204).send();
   } catch (e) {
     next(e);

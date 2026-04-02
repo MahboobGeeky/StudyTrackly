@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma.js";
+import type { AuthedRequest } from "../middleware/auth.js";
 import { sessionDurationMinutes } from "../lib/time.js";
+import { DayGoalOverride } from "../models/DayGoalOverride.js";
+import { Session } from "../models/Session.js";
+import { Term } from "../models/Term.js";
 
 const router = Router();
 
@@ -19,6 +22,7 @@ function parseKey(key: string): Date {
 
 router.get("/", async (req, res, next) => {
   try {
+    const authed = req as AuthedRequest;
     const termId = req.query.termId as string | undefined;
     const fromQ = req.query.from as string | undefined;
     const toQ = req.query.to as string | undefined;
@@ -26,23 +30,20 @@ router.get("/", async (req, res, next) => {
       return res.status(400).json({ error: "termId required" });
     }
 
-    const term = await prisma.term.findUnique({
-      where: { id: termId },
-      include: {
-        sessions: { include: { course: true } },
-        dayGoalOverrides: true,
-      },
-    });
+    const term = await Term.findOne({ _id: termId, userId: authed.userId }).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
 
     const start = fromQ ? parseKey(fromQ) : new Date(term.startDate);
     const end = toQ ? parseKey(toQ) : new Date(term.endDate);
-    const overrideMap = new Map(
-      term.dayGoalOverrides.map((o) => [o.dateKey, o.goalMinutes])
-    );
+    const overrides = await DayGoalOverride.find({
+      userId: authed.userId,
+      termId,
+    }).lean();
+    const overrideMap = new Map(overrides.map((o) => [o.dateKey, o.goalMinutes]));
 
     const durationByDay = new Map<string, number>();
-    for (const s of term.sessions) {
+    const sessions = await Session.find({ userId: authed.userId, termId }).lean();
+    for (const s of sessions) {
       const key = dateKeyFromDate(new Date(s.date));
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       durationByDay.set(key, (durationByDay.get(key) ?? 0) + m);
@@ -87,6 +88,7 @@ router.get("/", async (req, res, next) => {
 
 router.post("/adjust-goal", async (req, res, next) => {
   try {
+    const authed = req as AuthedRequest;
     const body = z
       .object({
         termId: z.string(),
@@ -95,25 +97,23 @@ router.post("/adjust-goal", async (req, res, next) => {
       })
       .parse(req.body);
 
-    const term = await prisma.term.findUnique({ where: { id: body.termId } });
+    const term = await Term.findOne({ _id: body.termId, userId: authed.userId }).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
 
-    const existing = await prisma.dayGoalOverride.findUnique({
-      where: { termId_dateKey: { termId: body.termId, dateKey: body.dateKey } },
-    });
+    const existing = await DayGoalOverride.findOne({
+      userId: authed.userId,
+      termId: body.termId,
+      dateKey: body.dateKey,
+    }).lean();
     const base = term.dailyGoalMinutes;
     const prev = existing?.goalMinutes ?? base;
     const nextGoal = Math.max(10, prev + body.deltaMinutes);
 
-    const row = await prisma.dayGoalOverride.upsert({
-      where: { termId_dateKey: { termId: body.termId, dateKey: body.dateKey } },
-      create: {
-        termId: body.termId,
-        dateKey: body.dateKey,
-        goalMinutes: nextGoal,
-      },
-      update: { goalMinutes: nextGoal },
-    });
+    const row = await DayGoalOverride.findOneAndUpdate(
+      { userId: authed.userId, termId: body.termId, dateKey: body.dateKey },
+      { $set: { goalMinutes: nextGoal } },
+      { upsert: true, new: true }
+    ).lean();
     res.json(row);
   } catch (e) {
     next(e);

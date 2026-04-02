@@ -1,6 +1,9 @@
 import { Router } from "express";
-import { prisma } from "../lib/prisma.js";
+import type { AuthedRequest } from "../middleware/auth.js";
 import { sessionDurationMinutes } from "../lib/time.js";
+import { Course } from "../models/Course.js";
+import { Session } from "../models/Session.js";
+import { Term } from "../models/Term.js";
 
 const router = Router();
 
@@ -38,13 +41,8 @@ export function computeStreak(sessionDates: Date[], today: Date): number {
 
 router.get("/dashboard", async (_req, res, next) => {
   try {
-    const term = await prisma.term.findFirst({
-      where: { isActive: true },
-      include: {
-        courses: true,
-        sessions: { include: { course: true } },
-      },
-    });
+    const req = _req as AuthedRequest;
+    const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
       return res.json({ term: null });
     }
@@ -57,19 +55,27 @@ router.get("/dashboard", async (_req, res, next) => {
     let totalMinutes = 0;
     let todayMinutes = 0;
     let weekMinutes = 0;
+    let todaySessionCount = 0;
     const courseMinutes: Record<string, { name: string; color: string; minutes: number }> = {};
 
-    for (const s of term.sessions) {
+    const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
+    const courseIds = [...new Set(sessions.map((s) => String(s.courseId)))];
+    const courses = await Course.find({ userId: req.userId, _id: { $in: courseIds } }).lean();
+    const courseMap = new Map(courses.map((c) => [String(c._id), c]));
+
+    for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       totalMinutes += m;
       const d = startOfDay(s.date).getTime();
       if (d === todayStart.getTime()) todayMinutes += m;
+      if (d === todayStart.getTime()) todaySessionCount += 1;
       if (s.date >= weekStart && s.date <= todayEnd) weekMinutes += m;
-      const cid = s.courseId;
+      const cid = String(s.courseId);
       if (!courseMinutes[cid]) {
+        const c = courseMap.get(cid);
         courseMinutes[cid] = {
-          name: s.course.name,
-          color: s.course.color,
+          name: c?.name ?? "Course",
+          color: c?.color ?? "blue",
           minutes: 0,
         };
       }
@@ -93,17 +99,17 @@ router.get("/dashboard", async (_req, res, next) => {
         : 0;
     const timeElapsedPct = (elapsedDays / totalTermDays) * 100;
 
-    const sessionDates = term.sessions.map((s) => s.date);
+    const sessionDates = sessions.map((s) => s.date);
     const streak = computeStreak(sessionDates, now);
 
     const studyDaysTarget = Math.max(1, Math.round(totalTermDays * 0.7));
     const distinctStudyDays = new Set(
-      term.sessions.map((s) => startOfDay(s.date).getTime())
+      sessions.map((s) => startOfDay(s.date).getTime())
     ).size;
 
     res.json({
       term: {
-        id: term.id,
+        id: String(term._id),
         name: term.name,
         startDate: term.startDate,
         endDate: term.endDate,
@@ -118,7 +124,8 @@ router.get("/dashboard", async (_req, res, next) => {
         totalMinutes,
         todayMinutes,
         weekMinutes,
-        sessionCount: term.sessions.length,
+        sessionCount: sessions.length,
+        todaySessionCount,
       },
       progress: {
         studyProgressPct,
@@ -138,10 +145,8 @@ router.get("/dashboard", async (_req, res, next) => {
 
 router.get("/calendar-line", async (req, res, next) => {
   try {
-    const term = await prisma.term.findFirst({
-      where: { isActive: true },
-      include: { sessions: { include: { course: true } } },
-    });
+    const authed = req as AuthedRequest;
+    const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
     if (!term) return res.json({ points: [] });
 
     const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
@@ -151,8 +156,10 @@ router.get("/calendar-line", async (req, res, next) => {
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
     const byDay: Record<string, number> = {};
-    for (const s of term.sessions) {
-      if (s.date < monthStart || s.date > monthEnd) continue;
+    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
+    for (const s of sessions) {
+      const dt = new Date(s.date);
+      if (dt < monthStart || dt > monthEnd) continue;
       const key = startOfDay(s.date).toISOString();
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       byDay[key] = (byDay[key] ?? 0) + m;
@@ -171,10 +178,8 @@ router.get("/calendar-line", async (req, res, next) => {
 
 router.get("/weekday-radar", async (_req, res, next) => {
   try {
-    const term = await prisma.term.findFirst({
-      where: { isActive: true },
-      include: { sessions: true },
-    });
+    const req = _req as AuthedRequest;
+    const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
       return res.json({
         weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((name) => ({
@@ -186,7 +191,8 @@ router.get("/weekday-radar", async (_req, res, next) => {
 
     const totals = [0, 0, 0, 0, 0, 0, 0];
     const counts = [0, 0, 0, 0, 0, 0, 0];
-    for (const s of term.sessions) {
+    const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
+    for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       const wd = s.date.getDay();
       totals[wd] += m;
@@ -209,16 +215,15 @@ router.get("/weekday-radar", async (_req, res, next) => {
 router.get("/study-bars", async (req, res, next) => {
   try {
     const mode = (req.query.mode as string) === "months" ? "months" : "weeks";
-    const term = await prisma.term.findFirst({
-      where: { isActive: true },
-      include: { sessions: true },
-    });
+    const authed = req as AuthedRequest;
+    const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
     if (!term) return res.json({ bars: [] });
 
     const byLabel: Record<string, number> = {};
     const now = new Date();
 
-    for (const s of term.sessions) {
+    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
+    for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       let key: string;
       if (mode === "months") {
@@ -257,11 +262,9 @@ function dateKeyFromDate(d: Date): string {
 
 router.get("/daily-stacked", async (req, res, next) => {
   try {
+    const authed = req as AuthedRequest;
     const days = Math.min(60, Math.max(1, Number(req.query.days) || 14));
-    const term = await prisma.term.findFirst({
-      where: { isActive: true },
-      include: { sessions: { include: { course: true } }, courses: true },
-    });
+    const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
     if (!term) return res.json({ rows: [], courses: [], averageHoursPerDay: 0 });
 
     const end = new Date();
@@ -272,19 +275,21 @@ router.get("/daily-stacked", async (req, res, next) => {
     const courseNames = new Map<string, string>();
     const courseColors = new Map<string, string>();
 
-    for (const c of term.courses) {
-      courseNames.set(c.id, c.name);
-      courseColors.set(c.id, c.color);
+    const courseRecords = await Course.find({ userId: authed.userId, termId: term._id }).lean();
+    for (const c of courseRecords) {
+      courseNames.set(String(c._id), c.name);
+      courseColors.set(String(c._id), c.color);
     }
 
-    for (const s of term.sessions) {
+    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
+    for (const s of sessions) {
       const d = new Date(s.date);
       if (d < start || d > end) continue;
       const dk = dateKeyFromDate(d);
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       if (!byDayCourse.has(dk)) byDayCourse.set(dk, new Map());
       const inner = byDayCourse.get(dk)!;
-      const cid = s.courseId;
+      const cid = String(s.courseId);
       inner.set(cid, (inner.get(cid) ?? 0) + m);
     }
 
@@ -341,10 +346,8 @@ router.get("/daily-stacked", async (req, res, next) => {
 
 router.get("/time-buckets", async (_req, res, next) => {
   try {
-    const term = await prisma.term.findFirst({
-      where: { isActive: true },
-      include: { sessions: true },
-    });
+    const req = _req as AuthedRequest;
+    const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
       return res.json({
         buckets: [
@@ -357,7 +360,8 @@ router.get("/time-buckets", async (_req, res, next) => {
     }
 
     const totals = [0, 0, 0, 0];
-    for (const s of term.sessions) {
+    const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
+    for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       const [hh] = s.startTime.split(":").map(Number);
       let idx = 0;

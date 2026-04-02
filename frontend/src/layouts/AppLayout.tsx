@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { api } from "@/lib/api";
+import { clearAuth, getToken } from "@/lib/auth";
 import type { AppOutletContext } from "@/layouts/outletContext";
 import type { DashboardStats, UserSettings } from "@/types";
 
@@ -12,6 +13,11 @@ export function AppLayout() {
 
   const load = useCallback(async () => {
     try {
+      if (!getToken()) {
+        setSettings(null);
+        setStats(null);
+        return;
+      }
       const [s, st] = await Promise.all([
         api<UserSettings>("/api/settings"),
         api<DashboardStats>("/api/stats/dashboard"),
@@ -35,8 +41,8 @@ export function AppLayout() {
       <Sidebar
         email={settings?.email ?? "student@example.com"}
         onLogout={() => {
-          localStorage.removeItem("athenify_profile");
-          navigate("/login");
+          clearAuth();
+          navigate("/signin");
         }}
       />
       <div className="flex min-h-full min-w-0 flex-1 flex-col">
