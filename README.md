@@ -136,6 +136,31 @@ VITE_API_URL=https://api.example.com npm run build
 
 If the same origin serves both (e.g. reverse proxy), you can leave `VITE_API_URL` unset and proxy `/api` to the backend.
 
+## Deployment Checklist
+1. **Backend secrets**
+   - Create `backend/.env` from `backend/.env.example`
+   - Set `MONGO_URI`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FRONTEND_URL`, and `GOOGLE_CALLBACK_URL`
+   - If you ever committed real secrets to git, rotate them immediately (Google OAuth + Mongo credentials)
+2. **Google OAuth**
+   - In Google Cloud Console, add your exact redirect URI(s):
+     - production: `https://<your-api-domain>/api/auth/google/callback`
+     - development: `http://localhost:4000/api/auth/google/callback`
+   - Reload/restart the backend after updating `backend/.env`
+3. **CORS**
+   - If frontend and backend are on different domains, set `CORS_ORIGIN` (comma-separated) in `backend/.env`
+4. **Frontend API URL**
+   - If frontend and backend are on different hosts, set `VITE_API_URL=https://<your-api-domain>` while building the frontend
+   - If you use a reverse proxy under the same domain, proxy `/api` to the backend and leave `VITE_API_URL` unset
+5. **Build + start**
+   - Backend: `npm run build` then `npm start`
+   - Frontend: `npm run build` then serve `frontend/dist` with a static host
+
+### Production Smoke Tests
+- `GET /api/health` returns `{ "ok": true }` without auth
+- Browser: open `/signin`, complete Google sign-in, verify the dashboard loads
+- Browser: open SmartTimer, start a countdown, confirm the selected ringtone plays when time ends
+- Browser: open Calendar and confirm the Study days table renders correctly
+
 ## Features (student workflow)
 
 
