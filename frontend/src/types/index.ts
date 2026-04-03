@@ -48,7 +48,14 @@ export type UserSettings = {
   trialEnd: string | null;
   academicLevel: string | null;
   timerVolume?: number;
+  smartTimerRingtone?: SmartTimerRingtone;
 };
+
+export type SmartTimerRingtone =
+  | "soft_chime"
+  | "classic_bell"
+  | "triple_ping"
+  | "alert_beep";
 
 export type StudyDayRow = {
   dateKey: string;
@@ -76,7 +83,11 @@ export type DashboardStats = {
     totalMinutes: number;
     todayMinutes: number;
     weekMinutes: number;
+    monthMinutes: number;
     sessionCount: number;
+    todaySessionCount: number;
+    weekSessionCount: number;
+    monthSessionCount: number;
   };
   progress: {
     studyProgressPct: number;
@@ -88,6 +99,7 @@ export type DashboardStats = {
   };
   courseBreakdown: { name: string; color: string; minutes: number }[];
   streak: number;
+  bestStreak?: number;
 };
 
 export type DataRoomFile = {

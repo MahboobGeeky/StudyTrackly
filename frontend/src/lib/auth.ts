@@ -23,6 +23,36 @@ export function isAuthenticated(): boolean {
   return Boolean(getToken());
 }
 
+/** Where API requests go. Empty = same origin (Vite dev proxies `/api` to the backend). */
+export function getApiBase(): string {
+  return (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+}
+
+/** Full URL to start Google OAuth (must hit the backend; use absolute URL in production if needed). */
+export function getGoogleAuthUrl(): string {
+  const base = getApiBase();
+  return base ? `${base}/api/auth/google` : "/api/auth/google";
+}
+
+/** For `useSyncExternalStore` — stays in sync with login/logout across tabs. */
+export function subscribeAuth(onStoreChange: () => void) {
+  const handler = () => onStoreChange();
+  window.addEventListener("storage", handler);
+  window.addEventListener(AUTH_CHANGE_EVENT, handler);
+  return () => {
+    window.removeEventListener("storage", handler);
+    window.removeEventListener(AUTH_CHANGE_EVENT, handler);
+  };
+}
+
+export function getAuthSnapshot(): boolean {
+  return isAuthenticated();
+}
+
+export function getAuthServerSnapshot(): boolean {
+  return false;
+}
+
 export function getToken(): string | null {
   return localStorage.getItem("studytrackly_token");
 }
@@ -36,4 +66,3 @@ export function getUser(): AuthUser | null {
     return null;
   }
 }
-

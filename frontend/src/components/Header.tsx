@@ -13,18 +13,21 @@ type Props = {
 };
 
 export function Header({ title, stats, breadcrumb }: Props) {
-  const { settings } = useOutletContext<AppOutletContext>();
+  const outlet = useOutletContext<AppOutletContext | undefined>();
+  const settings = outlet?.settings;
   const vol = settings?.timerVolume ?? 0.45;
+  const smartTimerRingtone = settings?.smartTimerRingtone ?? "soft_chime";
+  const reloadStats = outlet?.reload;
 
   const d = new Date();
   const line =
     breadcrumb ??
     `${format(d, "dd/MM/yy")} • CALENDAR WEEK ${getISOWeek(d)} • ${stats?.term?.name ?? "—"}`;
 
-  const totalM = stats?.totals.totalMinutes ?? 0;
+  const totalM = stats?.totals?.totalMinutes ?? 0;
   const goalH = stats?.term?.studyGoalHours ?? 600;
-  const studyPct = stats?.progress.studyProgressPct ?? 0;
-  const timePct = stats?.progress.timeElapsedPct ?? 0;
+  const studyPct = stats?.progress?.studyProgressPct ?? 0;
+  const timePct = stats?.progress?.timeElapsedPct ?? 0;
 
   return (
     <header className="border-b border-slate-800 bg-slate-950/50">
@@ -46,7 +49,11 @@ export function Header({ title, stats, breadcrumb }: Props) {
           </div>
         </div>
 
-        <HeaderToolbar timerVolume={vol} />
+        <HeaderToolbar
+          timerVolume={vol}
+          smartTimerRingtone={smartTimerRingtone}
+          onSessionSaved={reloadStats}
+        />
       </div>
 
       <div className="flex flex-wrap gap-6 border-t border-slate-800/80 px-6 py-3 text-[0.8125rem] text-slate-400">
@@ -65,7 +72,7 @@ export function Header({ title, stats, breadcrumb }: Props) {
         </div>
         <div className="min-w-[160px]">
           <div>
-            {stats?.progress.elapsedDays ?? 0}/{stats?.progress.totalTermDays ?? 1} •{" "}
+            {stats?.progress?.elapsedDays ?? 0}/{stats?.progress?.totalTermDays ?? 1} •{" "}
             {timePct.toFixed(0)}% elapsed
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-800">
@@ -77,7 +84,7 @@ export function Header({ title, stats, breadcrumb }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <Clapperboard className="h-4 w-4" />
-          {stats?.totals.sessionCount ?? 0} sessions
+          {stats?.totals?.todaySessionCount ?? 0} sessions today
         </div>
         <div>
           {goalH}h / — goal <span className="text-slate-600">(study days)</span>

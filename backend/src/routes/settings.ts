@@ -5,9 +5,17 @@ import { User } from "../models/User.js";
 
 const router = Router();
 
+const smartTimerRingtoneValues = ["soft_chime", "classic_bell", "triple_ping", "alert_beep"] as const;
+
 const body = z.object({
+  // Accept both legacy `name` and frontend `displayName`.
   name: z.string().min(1).optional(),
+  displayName: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  trialEnd: z.string().datetime().nullable().optional(),
+  academicLevel: z.string().min(1).nullable().optional(),
   timerVolume: z.number().min(0).max(1).optional(),
+  smartTimerRingtone: z.enum(smartTimerRingtoneValues).optional(),
 });
 
 router.get("/", async (_req, res, next) => {
@@ -18,8 +26,12 @@ router.get("/", async (_req, res, next) => {
     res.json({
       id: String(user._id),
       name: user.name,
+      displayName: user.name,
       email: user.email,
       timerVolume: user.timerVolume ?? 0.45,
+      smartTimerRingtone: user.smartTimerRingtone ?? "soft_chime",
+      trialEnd: user.trialEnd ? user.trialEnd.toISOString() : null,
+      academicLevel: user.academicLevel ?? null,
     });
   } catch (e) {
     next(e);
@@ -34,7 +46,18 @@ router.patch("/", async (req, res, next) => {
       authed.userId,
       {
         ...(data.name && { name: data.name }),
+        ...(data.displayName && { name: data.displayName }),
+        ...(data.email && { email: data.email.toLowerCase() }),
         ...(data.timerVolume !== undefined && { timerVolume: data.timerVolume }),
+        ...(data.smartTimerRingtone !== undefined && {
+          smartTimerRingtone: data.smartTimerRingtone,
+        }),
+        ...(data.trialEnd !== undefined && {
+          trialEnd: data.trialEnd ? new Date(data.trialEnd) : null,
+        }),
+        ...(data.academicLevel !== undefined && {
+          academicLevel: data.academicLevel,
+        }),
       },
       { new: true }
     ).lean();
@@ -42,8 +65,12 @@ router.patch("/", async (req, res, next) => {
     res.json({
       id: String(user._id),
       name: user.name,
+      displayName: user.name,
       email: user.email,
       timerVolume: user.timerVolume ?? 0.45,
+      smartTimerRingtone: user.smartTimerRingtone ?? "soft_chime",
+      trialEnd: user.trialEnd ? user.trialEnd.toISOString() : null,
+      academicLevel: user.academicLevel ?? null,
     });
   } catch (e) {
     next(e);

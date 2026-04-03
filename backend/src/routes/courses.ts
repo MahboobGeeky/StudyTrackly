@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthedRequest } from "../middleware/auth.js";
+import { mapDocs, withId } from "../lib/serialize.js";
 import { Course } from "../models/Course.js";
 
 const router = Router();
@@ -18,7 +19,7 @@ router.get("/", async (req, res, next) => {
     const query: Record<string, unknown> = { userId: authed.userId };
     if (termId) query.termId = termId;
     const courses = await Course.find(query).sort({ name: 1 }).lean();
-    res.json(courses);
+    res.json(mapDocs(courses));
   } catch (e) {
     next(e);
   }
@@ -34,7 +35,7 @@ router.post("/", async (req, res, next) => {
       name: data.name,
       color: data.color ?? "blue",
     });
-    res.status(201).json(course);
+    res.status(201).json(withId(course.toObject()));
   } catch (e) {
     next(e);
   }
@@ -50,7 +51,7 @@ router.patch("/:id", async (req, res, next) => {
       { new: true }
     ).lean();
     if (!course) return res.status(404).json({ error: "Course not found" });
-    res.json(course);
+    res.json(withId(course));
   } catch (e) {
     next(e);
   }

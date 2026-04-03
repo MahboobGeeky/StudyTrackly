@@ -39,23 +39,77 @@ export function computeStreak(sessionDates: Date[], today: Date): number {
   return streak;
 }
 
+export function computeBestStreak(sessionDates: Date[]): number {
+  const days = new Set(sessionDates.map((d) => startOfDay(d).getTime()));
+  if (days.size === 0) return 0;
+
+  let best = 0;
+
+  for (const t of days) {
+    const day = new Date(t);
+    const prev = addDays(day, -1);
+
+    // Only start a run if the previous day isn't present.
+    if (days.has(prev.getTime())) continue;
+
+    let run = 0;
+    let cursor = day;
+    while (days.has(cursor.getTime())) {
+      run += 1;
+      cursor = addDays(cursor, 1);
+    }
+
+    best = Math.max(best, run);
+  }
+
+  return best;
+}
+
 router.get("/dashboard", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
     const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
-      return res.json({ term: null });
+      return res.json({
+        term: null,
+        totals: {
+          totalMinutes: 0,
+          todayMinutes: 0,
+          weekMinutes: 0,
+          monthMinutes: 0,
+          sessionCount: 0,
+          todaySessionCount: 0,
+          weekSessionCount: 0,
+          monthSessionCount: 0,
+        },
+        progress: {
+          studyProgressPct: 0,
+          timeElapsedPct: 0,
+          elapsedDays: 0,
+          totalTermDays: 1,
+          distinctStudyDays: 0,
+          studyDaysTarget: 1,
+        },
+        courseBreakdown: [],
+        streak: 0,
+        bestStreak: 0,
+      });
     }
 
     const now = new Date();
     const todayStart = startOfDay(now);
     const todayEnd = endOfDay(now);
     const weekStart = addDays(todayStart, -6);
+    const calMonthStart = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
+    const calMonthEnd = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     let totalMinutes = 0;
     let todayMinutes = 0;
     let weekMinutes = 0;
+    let monthMinutes = 0;
     let todaySessionCount = 0;
+    let weekSessionCount = 0;
+    let monthSessionCount = 0;
     const courseMinutes: Record<string, { name: string; color: string; minutes: number }> = {};
 
     const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
@@ -69,7 +123,14 @@ router.get("/dashboard", async (_req, res, next) => {
       const d = startOfDay(s.date).getTime();
       if (d === todayStart.getTime()) todayMinutes += m;
       if (d === todayStart.getTime()) todaySessionCount += 1;
-      if (s.date >= weekStart && s.date <= todayEnd) weekMinutes += m;
+      if (s.date >= weekStart && s.date <= todayEnd) {
+        weekMinutes += m;
+        weekSessionCount += 1;
+      }
+      if (s.date >= calMonthStart && s.date <= calMonthEnd) {
+        monthMinutes += m;
+        monthSessionCount += 1;
+      }
       const cid = String(s.courseId);
       if (!courseMinutes[cid]) {
         const c = courseMap.get(cid);
@@ -101,6 +162,7 @@ router.get("/dashboard", async (_req, res, next) => {
 
     const sessionDates = sessions.map((s) => s.date);
     const streak = computeStreak(sessionDates, now);
+    const bestStreak = computeBestStreak(sessionDates);
 
     const studyDaysTarget = Math.max(1, Math.round(totalTermDays * 0.7));
     const distinctStudyDays = new Set(
@@ -124,8 +186,11 @@ router.get("/dashboard", async (_req, res, next) => {
         totalMinutes,
         todayMinutes,
         weekMinutes,
+        monthMinutes,
         sessionCount: sessions.length,
         todaySessionCount,
+        weekSessionCount,
+        monthSessionCount,
       },
       progress: {
         studyProgressPct,
@@ -137,6 +202,7 @@ router.get("/dashboard", async (_req, res, next) => {
       },
       courseBreakdown: Object.values(courseMinutes),
       streak,
+      bestStreak,
     });
   } catch (e) {
     next(e);
@@ -263,13 +329,38 @@ function dateKeyFromDate(d: Date): string {
 router.get("/daily-stacked", async (req, res, next) => {
   try {
     const authed = req as AuthedRequest;
-    const days = Math.min(60, Math.max(1, Number(req.query.days) || 14));
     const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
     if (!term) return res.json({ rows: [], courses: [], averageHoursPerDay: 0 });
 
-    const end = new Date();
-    const start = new Date(end);
-    start.setDate(start.getDate() - (days - 1));
+    const now = new Date();
+
+    // If `days` is provided, keep the old behavior; otherwise, use full active term range.
+    const daysQuery = req.query.days ? Number(req.query.days) : null;
+    const useTermRange = daysQuery == null || Number.isNaN(daysQuery);
+
+    let start: Date;
+    let end: Date;
+
+    if (useTermRange) {
+      start = new Date(term.startDate);
+      start.setHours(0, 0, 0, 0);
+
+      end = new Date(term.endDate);
+      end.setHours(23, 59, 59, 999);
+    } else {
+      const days = Math.min(60, Math.max(1, Number(daysQuery) || 14));
+      end = new Date();
+      // IMPORTANT: remove time-of-day from range checks so "today" is always included.
+      start = new Date(end);
+      start.setDate(start.getDate() - (days - 1));
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    // Average is computed from term start until "today" (or term end, whichever comes first).
+    const avgEnd = now > end ? new Date(end) : now;
+    avgEnd.setHours(23, 59, 59, 999);
+    const avgDayKey = dateKeyFromDate(avgEnd);
 
     const byDayCourse = new Map<string, Map<string, number>>();
     const courseNames = new Map<string, string>();
@@ -306,15 +397,16 @@ router.get("/daily-stacked", async (req, res, next) => {
         dateKey: dk,
         label: dk.slice(5),
       };
-      let total = 0;
+      let totalMinutes = 0;
       const inner = byDayCourse.get(dk);
       for (const cid of courseIds) {
         const mins = inner?.get(cid) ?? 0;
         const h = Math.round((mins / 60) * 100) / 100;
         row[`c_${cid}`] = h;
-        total += mins;
+        totalMinutes += mins;
       }
-      row.totalHours = Math.round((total / 60) * 100) / 100;
+      row.totalMinutes = totalMinutes;
+      row.totalHours = Math.round((totalMinutes / 60) * 100) / 100;
       return row;
     });
 
@@ -325,14 +417,14 @@ router.get("/daily-stacked", async (req, res, next) => {
       dataKey: `c_${id}`,
     }));
 
-    const totalMins = rows.reduce((acc, r) => {
-      let m = 0;
-      for (const cid of courseIds) {
-        m += ((r[`c_${cid}`] as number) ?? 0) * 60;
-      }
-      return acc + m;
-    }, 0);
-    const avgPerDay = rows.length > 0 ? totalMins / rows.length / 60 : 0;
+    const avgDayCount = rows.filter((r) => r.dateKey <= avgDayKey).length;
+    const totalMinutesUpToAvg =
+      rows.reduce((acc, r) => {
+        if (r.dateKey > avgDayKey) return acc;
+        return acc + ((r.totalMinutes as number) ?? 0);
+      }, 0) ?? 0;
+
+    const avgPerDay = avgDayCount > 0 ? totalMinutesUpToAvg / avgDayCount / 60 : 0;
 
     res.json({
       rows,

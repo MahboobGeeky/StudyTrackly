@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { format, getISOWeek } from "date-fns";
+import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import type { AppOutletContext } from "@/layouts/outletContext";
 import { api } from "@/lib/api";
@@ -89,53 +89,99 @@ export function CalendarPage() {
     await load();
   }
 
-  const studyDaysLabel = `${stats?.progress.distinctStudyDays ?? 0}/${stats?.progress.studyDaysTarget ?? 50}`;
+  const studyDaysLabel = `${stats?.progress?.distinctStudyDays ?? 0}/${stats?.progress?.studyDaysTarget ?? 50}`;
 
   return (
     <>
       <Header title="Calendar" stats={stats} />
-      <main className="flex flex-1 flex-col gap-6 overflow-auto p-6 xl:flex-row">
-        <div className="min-w-0 flex-1 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2 text-[0.8125rem]">
-              {["Days", "Weeks", "Months"].map((t, i) => (
-                <span
-                  key={t}
-                  className={
-                    i === 0
-                      ? "rounded-full bg-slate-800 px-3 py-1.5 text-white"
-                      : "text-slate-500"
-                  }
-                >
-                  {t}
-                </span>
-              ))}
+      <main className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+        <div className="grid gap-6 xl:grid-cols-[1fr_minmax(260px,320px)] xl:items-start">
+          <div className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-2 text-[0.8125rem]">
+                {["Days", "Weeks", "Months"].map((t, i) => (
+                  <span
+                    key={t}
+                    className={
+                      i === 0
+                        ? "rounded-full bg-slate-800 px-3 py-1.5 text-white"
+                        : "text-slate-500"
+                    }
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <p className="text-[0.9375rem] font-medium">Study time (recent days)</p>
+              <div className="mt-4 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={bars}>
+                    <CartesianGrid stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 11 }} />
+                    <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#0f172a",
+                        border: "1px solid #334155",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-            <p className="text-[0.9375rem] font-medium">Study time (recent days)</p>
-            <div className="mt-4 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={bars}>
-                  <CartesianGrid stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#0f172a",
-                      border: "1px solid #334155",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+          <aside className="flex w-full flex-col gap-4 xl:max-w-sm xl:justify-self-end">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <p className="text-[0.8125rem] text-slate-500">
+                {sel
+                  ? `${format(new Date(sel.date), "dd/MM/yy")} • ${format(new Date(sel.date), "EEEE")}`
+                  : "Select a row"}
+              </p>
+              <p className="mt-2 text-[0.9375rem] font-medium text-slate-100">
+                Sessions • {daySessions.length}
+              </p>
+              <ul className="mt-3 space-y-3">
+                {daySessions.map((s) => {
+                  const mins = sessionDurationMinutes(
+                    s.startTime,
+                    s.endTime,
+                    s.breakMinutes
+                  );
+                  return (
+                    <li
+                      key={s.id}
+                      className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-[0.8125rem]"
+                      onClick={() => setSelected(s.id)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-orange-300">{s.course.name}</span>
+                        <span className="text-xs text-slate-500">
+                          {s.startTime} – {s.endTime}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-slate-400">{formatMinutes(mins)}</p>
+                      {s.note && <p className="mt-1 text-xs text-slate-500">{s.note}</p>}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-          </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <p className="text-[0.9375rem] font-medium">Badges • 1</p>
+              <p className="mt-2 text-[0.8125rem] text-slate-400">
+                You&apos;ve maintained a streak of {stats?.streak ?? 0} days!
+              </p>
+            </div>
+          </aside>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
+          <div className="col-span-full min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
               <p className="text-[0.9375rem] font-semibold text-slate-100">
                 Study days • {studyDaysLabel}
@@ -148,7 +194,7 @@ export function CalendarPage() {
                 Go to today
               </button>
             </div>
-            <div className="max-h-[480px] overflow-auto">
+            <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-[0.9375rem]">
                 <thead className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
@@ -261,50 +307,6 @@ export function CalendarPage() {
             </div>
           </div>
         </div>
-
-        <aside className="w-full shrink-0 space-y-4 xl:max-w-sm">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-            <p className="text-[0.8125rem] text-slate-500">
-              {sel
-                ? `${format(new Date(sel.date), "dd/MM/yy")} • ${format(new Date(sel.date), "EEEE")}`
-                : "Select a row"}
-            </p>
-            <p className="mt-2 text-[0.9375rem] font-medium text-slate-100">
-              Sessions • {daySessions.length}
-            </p>
-            <ul className="mt-3 space-y-3">
-              {daySessions.map((s) => {
-                const mins = sessionDurationMinutes(
-                  s.startTime,
-                  s.endTime,
-                  s.breakMinutes
-                );
-                return (
-                  <li
-                    key={s.id}
-                    className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-[0.8125rem]"
-                    onClick={() => setSelected(s.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-orange-300">{s.course.name}</span>
-                      <span className="text-xs text-slate-500">
-                        {s.startTime} – {s.endTime}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-slate-400">{formatMinutes(mins)}</p>
-                    {s.note && <p className="mt-1 text-xs text-slate-500">{s.note}</p>}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
-            <p className="text-[0.9375rem] font-medium">Badges • 1</p>
-            <p className="mt-2 text-[0.8125rem] text-slate-400">
-              You&apos;ve maintained a streak of {stats?.streak ?? 0} days!
-            </p>
-          </div>
-        </aside>
       </main>
     </>
   );

@@ -1,27 +1,42 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthedRequest } from "../middleware/auth.js";
+import { studyGoalHoursFromDaily } from "../lib/termGoal.js";
+import { withId } from "../lib/serialize.js";
 import { Term } from "../models/Term.js";
 
 const router = Router();
 
 const termBody = z.object({
   name: z.string().min(1),
-  startDate: z.string().datetime(),
-  endDate: z.string().datetime(),
-  studyGoalHours: z.number().int().min(1).optional(),
-  dailyGoalMinutes: z.number().int().min(1).optional(),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  dailyGoalMinutes: z.number().int().min(1),
+  /** If omitted, computed as: inclusive days × dailyGoalMinutes / 60 */
+  studyGoalHours: z.number().positive().optional(),
   goldMedals: z.number().int().min(0).optional(),
   silverMedals: z.number().int().min(0).optional(),
   bronzeMedals: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
 });
 
+function parseTermDates(startRaw: string, endRaw: string) {
+  const startDate = new Date(startRaw);
+  const endDate = new Date(endRaw);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Invalid start or end date");
+  }
+  if (endDate < startDate) {
+    throw new Error("End date must be on or after start date");
+  }
+  return { startDate, endDate };
+}
+
 router.get("/", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
     const terms = await Term.find({ userId: req.userId }).sort({ startDate: -1 }).lean();
-    res.json(terms);
+    res.json(terms.map((t) => withId(t)));
   } catch (e) {
     next(e);
   }
@@ -31,7 +46,7 @@ router.get("/active", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
     const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
-    res.json(term);
+    res.json(term ? withId(term) : null);
   } catch (e) {
     next(e);
   }
@@ -40,24 +55,31 @@ router.get("/active", async (_req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     const data = termBody.parse(req.body);
+    const { startDate, endDate } = parseTermDates(data.startDate, data.endDate);
+    const studyGoalHours =
+      data.studyGoalHours ?? studyGoalHoursFromDaily(startDate, endDate, data.dailyGoalMinutes);
+
     if (data.isActive !== false) {
       await Term.updateMany({ userId: (req as AuthedRequest).userId }, { isActive: false });
     }
     const term = await Term.create({
       userId: (req as AuthedRequest).userId,
       name: data.name,
-      startDate: new Date(data.startDate),
-      endDate: new Date(data.endDate),
-      studyGoalHours: data.studyGoalHours ?? 600,
-      dailyGoalMinutes: data.dailyGoalMinutes ?? 720,
+      startDate,
+      endDate,
+      studyGoalHours,
+      dailyGoalMinutes: data.dailyGoalMinutes,
       goldMedals: data.goldMedals ?? 0,
       silverMedals: data.silverMedals ?? 0,
       bronzeMedals: data.bronzeMedals ?? 0,
       isActive: data.isActive ?? true,
       examCount: 0,
     });
-    res.status(201).json(term);
+    res.status(201).json(withId(term.toObject()));
   } catch (e) {
+    if (e instanceof Error && e.message.includes("date")) {
+      return res.status(400).json({ error: e.message });
+    }
     next(e);
   }
 });
@@ -65,17 +87,44 @@ router.post("/", async (req, res, next) => {
 router.patch("/:id", async (req, res, next) => {
   try {
     const data = termBody.partial().parse(req.body);
-    if (data.isActive === true) {
-      await Term.updateMany({ userId: (req as AuthedRequest).userId }, { isActive: false });
+    const userId = (req as AuthedRequest).userId;
+
+    const existing = await Term.findOne({ _id: req.params.id, userId }).lean();
+    if (!existing) return res.status(404).json({ error: "Term not found" });
+
+    let startDate = existing.startDate;
+    let endDate = existing.endDate;
+    let dailyGoalMinutes = existing.dailyGoalMinutes;
+
+    if (data.startDate != null || data.endDate != null) {
+      const s = data.startDate ?? existing.startDate.toISOString();
+      const e = data.endDate ?? existing.endDate.toISOString();
+      const parsed = parseTermDates(s, e);
+      startDate = parsed.startDate;
+      endDate = parsed.endDate;
     }
+    if (data.dailyGoalMinutes != null) dailyGoalMinutes = data.dailyGoalMinutes;
+
+    const datesOrDailyChanged =
+      data.startDate != null || data.endDate != null || data.dailyGoalMinutes != null;
+    let studyGoalHours = existing.studyGoalHours;
+    if (data.studyGoalHours != null) {
+      studyGoalHours = data.studyGoalHours;
+    } else if (datesOrDailyChanged) {
+      studyGoalHours = studyGoalHoursFromDaily(startDate, endDate, dailyGoalMinutes);
+    }
+
+    if (data.isActive === true) {
+      await Term.updateMany({ userId }, { isActive: false });
+    }
+
     const term = await Term.findOneAndUpdate(
-      { _id: req.params.id, userId: (req as AuthedRequest).userId },
+      { _id: req.params.id, userId },
       {
         ...(data.name && { name: data.name }),
-        ...(data.startDate && { startDate: new Date(data.startDate) }),
-        ...(data.endDate && { endDate: new Date(data.endDate) }),
-        ...(data.studyGoalHours != null && { studyGoalHours: data.studyGoalHours }),
+        ...(data.startDate != null || data.endDate != null ? { startDate, endDate } : {}),
         ...(data.dailyGoalMinutes != null && { dailyGoalMinutes: data.dailyGoalMinutes }),
+        studyGoalHours,
         ...(data.goldMedals != null && { goldMedals: data.goldMedals }),
         ...(data.silverMedals != null && { silverMedals: data.silverMedals }),
         ...(data.bronzeMedals != null && { bronzeMedals: data.bronzeMedals }),
@@ -84,8 +133,11 @@ router.patch("/:id", async (req, res, next) => {
       { new: true }
     ).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
-    res.json(term);
+    res.json(withId(term));
   } catch (e) {
+    if (e instanceof Error && e.message.includes("date")) {
+      return res.status(400).json({ error: e.message });
+    }
     next(e);
   }
 });
@@ -100,7 +152,7 @@ router.post("/:id/activate", async (req, res, next) => {
       { new: true }
     ).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
-    res.json(term);
+    res.json(withId(term));
   } catch (e) {
     next(e);
   }

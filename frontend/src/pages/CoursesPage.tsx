@@ -14,6 +14,9 @@ export function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [name, setName] = useState("");
   const [color, setColor] = useState("blue");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("blue");
 
   const load = useCallback(async () => {
     const t = await api<Term | null>("/api/terms/active");
@@ -41,6 +44,24 @@ export function CoursesPage() {
 
   async function remove(id: string) {
     await api(`/api/courses/${id}`, { method: "DELETE" });
+    await load();
+    await reload();
+  }
+
+  function startEdit(c: Course) {
+    setEditingId(c.id);
+    setEditName(c.name);
+    setEditColor(c.color);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId || !editName.trim()) return;
+    await api(`/api/courses/${editingId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: editName.trim(), color: editColor }),
+    });
+    setEditingId(null);
     await load();
     await reload();
   }
@@ -88,18 +109,68 @@ export function CoursesPage() {
           {courses.map((c) => (
             <div
               key={c.id}
-              className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+              className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
             >
-              <span className={`rounded-full border px-3 py-1 text-sm ${coursePillClass(c.color)}`}>
-                {c.name}
-              </span>
-              <button
-                type="button"
-                onClick={() => void remove(c.id)}
-                className="text-xs text-red-400 hover:underline"
-              >
-                Remove
-              </button>
+              {editingId === c.id ? (
+                <form onSubmit={saveEdit} className="space-y-3">
+                  <input
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                  />
+                  <select
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                  >
+                    {COLORS.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`rounded-full border px-3 py-1 text-sm ${coursePillClass(c.color)}`}
+                  >
+                    {c.name}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(c)}
+                      className="text-xs text-blue-400 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void remove(c.id)}
+                      className="text-xs text-red-400 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

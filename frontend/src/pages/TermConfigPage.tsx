@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Header } from "@/components/Header";
 import type { AppOutletContext } from "@/layouts/outletContext";
@@ -6,6 +6,14 @@ import { api } from "@/lib/api";
 import { formatMinutes } from "@/lib/format";
 import type { SessionRow, Term } from "@/types";
 import { format } from "date-fns";
+
+function previewGoalHours(start: string, end: string, dailyMin: number): number {
+  const s = new Date(`${start}T00:00:00`);
+  const e = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e < s) return 0;
+  const days = Math.round((e.getTime() - s.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  return Math.round(((days * dailyMin) / 60) * 100) / 100;
+}
 
 export function TermConfigPage() {
   const { stats, reload } = useOutletContext<AppOutletContext>();
@@ -16,7 +24,6 @@ export function TermConfigPage() {
   const [name, setName] = useState("New term");
   const [start, setStart] = useState("2026-09-01");
   const [end, setEnd] = useState("2026-12-20");
-  const [goal, setGoal] = useState(600);
   const [daily, setDaily] = useState(720);
   const [gold, setGold] = useState(0);
   const [silver, setSilver] = useState(0);
@@ -44,6 +51,11 @@ export function TermConfigPage() {
 
   const active = terms.find((t) => t.isActive);
 
+  const computedPreviewHours = useMemo(
+    () => previewGoalHours(start, end, daily),
+    [start, end, daily]
+  );
+
   let totalM = 0;
   for (const s of sessions) {
     const [sh, sm] = s.startTime.split(":").map(Number);
@@ -61,9 +73,8 @@ export function TermConfigPage() {
     e.preventDefault();
     const body = {
       name,
-      startDate: new Date(`${start}T00:00:00.000Z`).toISOString(),
-      endDate: new Date(`${end}T23:59:59.000Z`).toISOString(),
-      studyGoalHours: goal,
+      startDate: new Date(`${start}T00:00:00`).toISOString(),
+      endDate: new Date(`${end}T23:59:59`).toISOString(),
       dailyGoalMinutes: daily,
       isActive: true,
     };
@@ -133,25 +144,20 @@ export function TermConfigPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-slate-500">Goal (hours)</label>
-                  <input
-                    type="number"
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-                    value={goal}
-                    onChange={(e) => setGoal(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500">Daily goal (min)</label>
-                  <input
-                    type="number"
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-                    value={daily}
-                    onChange={(e) => setDaily(Number(e.target.value))}
-                  />
-                </div>
+              <div>
+                <label className="text-xs text-slate-500">Daily goal (minutes)</label>
+                <input
+                  type="number"
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+                  value={daily}
+                  min={1}
+                  onChange={(e) => setDaily(Number(e.target.value))}
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  Total term goal (computed):{" "}
+                  <span className="font-medium text-slate-300">{computedPreviewHours}h</span> from
+                  inclusive days × daily study hours.
+                </p>
               </div>
               <button
                 type="submit"

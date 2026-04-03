@@ -6,12 +6,26 @@ import { Session } from "../models/Session.js";
 
 const router = Router();
 
+const timeHHMM = z
+  .string()
+  .regex(/^\s*\d{1,2}:\d{1,2}\s*$/, "Invalid")
+  .transform((v) => v.trim())
+  .transform((v) => {
+    const [hRaw, mRaw] = v.split(":");
+    const h = Number(hRaw);
+    const m = Number(mRaw);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) throw new Error("Invalid");
+    if (h < 0 || h > 23 || m < 0 || m > 59) throw new Error("Invalid");
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  });
+
 const body = z.object({
   termId: z.string(),
   courseId: z.string(),
-  date: z.string().datetime(),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  // Accept any non-empty ISO-like string; JS Date parsing + DB indexing handle the rest.
+  date: z.string().min(1),
+  startTime: timeHHMM,
+  endTime: timeHHMM,
   breakMinutes: z.number().int().min(0).optional(),
   activity: z.string().optional(),
   note: z.string().optional(),

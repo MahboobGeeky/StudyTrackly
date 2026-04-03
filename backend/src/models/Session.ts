@@ -24,9 +24,10 @@ const sessionSchema = new Schema<SessionDoc>(
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
     breakMinutes: { type: Number, required: true, default: 0 },
-    activity: { type: String, required: true, default: "" },
-    note: { type: String, required: true, default: "" },
-    label: { type: String, required: true, default: "" },
+    // Optional text fields; defaults keep old seed-compatible behaviour.
+    activity: { type: String, required: false, default: "" },
+    note: { type: String, required: false, default: "" },
+    label: { type: String, required: false, default: "" },
   },
   { timestamps: true }
 );

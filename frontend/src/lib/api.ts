@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import { clearAuth, AUTH_CHANGE_EVENT } from "@/lib/auth";
+import { clearAuth } from "@/lib/auth";
 
 const base = import.meta.env.VITE_API_URL ?? "";
 
@@ -11,8 +11,12 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("studytrackly_token");
   if (token) {
-    config.headers = config.headers ?? {};
-    config.headers.Authorization = `Bearer ${token}`;
+    const h = config.headers;
+    if (h && typeof (h as { set?: (k: string, v: string) => void }).set === "function") {
+      (h as { set: (k: string, v: string) => void }).set("Authorization", `Bearer ${token}`);
+    } else {
+      config.headers = { ...config.headers, Authorization: `Bearer ${token}` } as typeof config.headers;
+    }
   }
   return config;
 });
@@ -22,9 +26,6 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
       clearAuth();
-      window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
-      // Use React Router navigation instead of direct location change
-      // Let the auth state sync handle the redirect through ProtectedRoute
       return Promise.reject(error);
     }
     return Promise.reject(error);

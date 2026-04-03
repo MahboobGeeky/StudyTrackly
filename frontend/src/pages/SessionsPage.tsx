@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { Header } from "@/components/Header";
 import type { AppOutletContext } from "@/layouts/outletContext";
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ import { format } from "date-fns";
 
 export function SessionsPage() {
   const { stats, reload } = useOutletContext<AppOutletContext>();
+  const [params] = useSearchParams();
   const [term, setTerm] = useState<Term | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -32,8 +33,9 @@ export function SessionsPage() {
     ]);
     setCourses(cs);
     setSessions(ss);
-    setCourseId((prev) => prev || cs[0]?.id || "");
-  }, []);
+    const fromQuery = params.get("courseId") ?? "";
+    setCourseId((prev) => prev || fromQuery || cs[0]?.id || "");
+  }, [params]);
 
   useEffect(() => {
     void load();
@@ -50,25 +52,29 @@ export function SessionsPage() {
       setMsg("Create a term and courses first (Term Config).");
       return;
     }
-    setMsg("");
-    const iso = new Date(`${date}T12:00:00.000Z`).toISOString();
-    await api<SessionRow>("/api/sessions", {
-      method: "POST",
-      body: JSON.stringify({
-        termId: term.id,
-        courseId,
-        date: iso,
-        startTime: start,
-        endTime: end,
-        breakMinutes: brk,
-        activity,
-        note,
-      }),
-    });
-    setActivity("");
-    setNote("");
-    await load();
-    await reload();
+    try {
+      setMsg("");
+      const iso = new Date(`${date}T12:00:00.000Z`).toISOString();
+      await api<SessionRow>("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({
+          termId: term.id,
+          courseId,
+          date: iso,
+          startTime: start,
+          endTime: end,
+          breakMinutes: brk,
+          activity,
+          note,
+        }),
+      });
+      setActivity("");
+      setNote("");
+      await load();
+      await reload();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Failed to create session.");
+    }
   }
 
   async function remove(id: string) {

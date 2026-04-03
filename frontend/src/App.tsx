@@ -1,6 +1,7 @@
-import React, { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useSyncExternalStore } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/layouts/AppLayout";
+import { AuthCallbackPage } from "@/pages/AuthCallbackPage";
 import { CalendarPage } from "@/pages/CalendarPage";
 import { CoursesPage } from "@/pages/CoursesPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -8,11 +9,10 @@ import { DataRoomPage } from "@/pages/DataRoomPage";
 import { SessionsPage } from "@/pages/SessionsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SignInPage } from "@/pages/SignInPage";
-import { SignUpPage } from "@/pages/SignUpPage";
 import { TermConfigPage } from "@/pages/TermConfigPage";
 import { TermPage } from "@/pages/TermPage";
 import { TrophiesPage } from "@/pages/TrophiesPage";
-import { AUTH_CHANGE_EVENT, isAuthenticated } from "@/lib/auth";
+import { getAuthServerSnapshot, getAuthSnapshot, subscribeAuth } from "@/lib/auth";
 
 function ProtectedRoute({ authed, children }: { authed: boolean; children: ReactNode | null }) {
   return authed ? <>{children}</> : <Navigate to="/signin" replace />;
@@ -23,26 +23,14 @@ function GuestRoute({ authed, children }: { authed: boolean; children: ReactNode
 }
 
 export default function App() {
-  const [authed, setAuthed] = useState(() => isAuthenticated());
-
-  useEffect(() => {
-    const sync = () => setAuthed(isAuthenticated());
-    window.addEventListener("storage", sync);
-    window.addEventListener(AUTH_CHANGE_EVENT, sync);
-
-    // Ensure tab starts with latest value from localStorage
-    sync();
-
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(AUTH_CHANGE_EVENT, sync);
-    };
-  }, []);
+  const authed = useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthServerSnapshot);
 
   return (
     <Routes>
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
       <Route path="/signin" element={<GuestRoute authed={authed}><SignInPage /></GuestRoute>} />
-      <Route path="/signup" element={<GuestRoute authed={authed}><SignUpPage /></GuestRoute>} />
+      <Route path="/signup" element={<Navigate to="/signin" replace />} />
 
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<ProtectedRoute authed={authed}><DashboardPage /></ProtectedRoute>} />

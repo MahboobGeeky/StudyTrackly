@@ -12,7 +12,7 @@ athenify-clone/
 └── athenify-clone-fullstack.zip   # optional archive (no node_modules/dist); run npm install in each folder
 ```
 
-A ready-made archive **`athenify-clone-fullstack.zip`** in this folder contains the same `frontend` and `backend` trees (without `node_modules` or `dist` to keep the file small). Unzip, then follow **Quick start** in each subfolder.
+A ready-made archive `**athenify-clone-fullstack.zip**` in this folder contains the same `frontend` and `backend` trees (without `node_modules` or `dist` to keep the file small). Unzip, then follow **Quick start** in each subfolder.
 
 ## Prerequisites
 
@@ -23,16 +23,37 @@ A ready-made archive **`athenify-clone-fullstack.zip`** in this folder contains 
 ## Setup & run (VS Code)
 
 ### 1) Open project
+
 - VS Code → **File → Open Folder…** → select `athenify-clone`
 
 ### 2) Backend env
-Create `backend/.env`:
+
+Create `backend/.env` (see `backend/.env.example`). You need **MongoDB**, **JWT**, and **Google OAuth** credentials.
+
+**Google Cloud Console** (one-time):
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**.
+2. **Authorized redirect URIs**: add exactly
+  `http://localhost:4000/api/auth/google/callback`  
+   For production, add your deployed API callback URL the same way (e.g. `https://api.yourdomain.com/api/auth/google/callback`).
+3. Copy **Client ID** and **Client secret** into `backend/.env` (same pair from the **Web application** client — not Android/iOS/Desktop).
+4. **OAuth consent screen**: configure it once (APIs & Services → OAuth consent screen). If the app is in **Testing**, add your Google account under **Test users**.
+
+**If you see `invalid_client` or “OAuth client was not found”:** the Client ID or Client secret in `.env` does not match Google Cloud, or the credential type is not **Web application**. Remove stray spaces; restart the backend after editing `.env`. The **Authorized redirect URI** must match `GOOGLE_CALLBACK_URL` exactly (no trailing slash unless you registered it that way).
+
+**If you see `redirect_uri_mismatch` (Error 400):** Google’s list of **Authorized redirect URIs** does not include the exact URL your API sends. On backend startup, the console prints: `Google OAuth redirect URI (must match Google Cloud exactly): …` — copy that string into Google Cloud → **Credentials** → your **Web client** → **Authorized redirect URIs** → Save. Use `http://localhost:4000/...` vs `http://127.0.0.1:4000/...` consistently (they count as different). Do not rely on “Authorized JavaScript origins” alone; you must add the **redirect URI** list entry.
 
 ```bash
 MONGO_URI="your-mongodb-atlas-uri"
 JWT_SECRET="your-very-long-random-secret"
 JWT_EXPIRES_IN="7d"
 PORT=4000
+
+GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="..."
+GOOGLE_CALLBACK_URL="http://localhost:4000/api/auth/google/callback"
+FRONTEND_URL="http://localhost:5173"
+
 # Optional for deployment (comma-separated):
 # CORS_ORIGIN="http://localhost:5173,https://your-frontend-domain.com"
 ```
@@ -58,11 +79,10 @@ npm run dev
 
 Open `http://localhost:5173`
 
-### 5) Create account / sign in
-- Go to `http://localhost:5173/signup` to create an account (name, email, password)
-- Then sign in at `http://localhost:5173/signin`
+### 5) Sign in with Google
 
-Your data is stored in MongoDB and will still be there after you close the app. Signing in with the same email shows the same profile/data.
+- Open `http://localhost:5173/signin` and choose **Continue with Google**.
+- The first sign-in creates your account; later sign-ins use the same Google account and the same data in MongoDB.
 
 ## Quick start (CLI)
 
@@ -74,7 +94,7 @@ npm install
 npm run dev
 ```
 
-The API listens on **http://localhost:4000**. Health check: `curl http://localhost:4000/api/health`
+The API listens on **[http://localhost:4000](http://localhost:4000)**. Health check: `curl http://localhost:4000/api/health`
 Configure `backend/.env` before running (see above).
 
 ### 2. Frontend (new terminal)
@@ -85,11 +105,11 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. The Vite dev server **proxies** `/api` to `http://localhost:4000`, so you do not need CORS configuration for local development.
+Open **[http://localhost:5173](http://localhost:5173)**. The Vite dev server **proxies** `/api` to `http://localhost:4000`, so the “Continue with Google” link can use a relative `/api/auth/google` URL in development. **Google’s redirect** always hits the backend directly on port **4000** (`GOOGLE_CALLBACK_URL`), so that URI must match what you configured in Google Cloud Console.
 
 ### 3. Auth
-- Sign up: `http://localhost:5173/signup`
-- Sign in: `http://localhost:5173/signin`
+
+- Sign in: `http://localhost:5173/signin` (Google OAuth). `/signup` redirects to `/signin`.
 
 ## Production build
 
@@ -108,7 +128,7 @@ cd frontend
 npm run build
 ```
 
-Serve the `frontend/dist` folder with any static host. Set **`VITE_API_URL`** to your API origin if the frontend and API are on different hosts, for example:
+Serve the `frontend/dist` folder with any static host. Set `**VITE_API_URL**` to your API origin if the frontend and API are on different hosts, for example:
 
 ```bash
 VITE_API_URL=https://api.example.com npm run build
@@ -118,21 +138,22 @@ If the same origin serves both (e.g. reverse proxy), you can leave `VITE_API_URL
 
 ## Features (student workflow)
 
-| Area | What you can do |
-|------|------------------|
+
+| Area            | What you can do                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------- |
 | **Term Config** | Create terms, set goals, activate a term, edit gold/silver/bronze counts, calendar feed placeholder |
-| **Courses** | Add/remove courses (color tags for UI) for the active term |
-| **Sessions** | Create sessions (date, time, break, course, activity, note); list and delete |
-| **Dashboard** | Study totals, streak, course chart, weekday bars, pace summary |
-| **Calendar** | Bar chart of recent days + table + day detail |
-| **Data Room** | Add/remove resource links (name, URL, note) |
-| **Trophies** | View medals and streak |
-| **Settings** | Email, display name, trial date, academic level |
+| **Courses**     | Add/remove courses (color tags for UI) for the active term                                          |
+| **Sessions**    | Create sessions (date, time, break, course, activity, note); list and delete                        |
+| **Dashboard**   | Study totals, streak, course chart, weekday bars, pace summary                                      |
+| **Calendar**    | Bar chart of recent days + table + day detail                                                       |
+| **Data Room**   | Add/remove resource links (name, URL, note)                                                         |
+| **Trophies**    | View medals and streak                                                                              |
+| **Settings**    | Email, display name, trial date, academic level                                                     |
+
 
 ## API overview (REST)
 
-- `POST /api/auth/signup` (name, email, password) → JWT token
-- `POST /api/auth/signin` (email, password) → JWT token
+- `GET /api/auth/google` — redirect to Google; then `GET /api/auth/google/callback` issues JWT and redirects the browser to `FRONTEND_URL/auth/callback#token=…&user=…`
 - `GET/POST/PATCH/DELETE /api/terms` — terms; `GET /api/terms/active`; `POST /api/terms/:id/activate`
 - `GET/POST/PATCH/DELETE /api/courses?termId=`
 - `GET/POST/PATCH/DELETE /api/sessions?termId=`
@@ -144,15 +165,17 @@ If the same origin serves both (e.g. reverse proxy), you can leave `VITE_API_URL
 - `GET /api/stats/time-buckets` (radar: time of day)
 - `GET /api/stats/daily-stacked` (stacked bars: total study hours per day, by course)
 
-All routes except `/api/health` and `/api/auth/*` require:
+All routes except `/api/health` and `/api/auth/`* require:
 `Authorization: Bearer <token>`
 
 ## Tech stack
 
-| Layer | Stack |
-|--------|--------|
+
+| Layer    | Stack                                                                              |
+| -------- | ---------------------------------------------------------------------------------- |
 | Frontend | React 19, Vite 6, Tailwind CSS 4, React Router 7, Recharts, Lucide React, date-fns |
-| Backend | Express, MongoDB Atlas (Mongoose), JWT, bcrypt, Zod |
+| Backend  | Express, MongoDB Atlas (Mongoose), JWT, bcrypt, Zod                                |
+
 
 ## Legal
 

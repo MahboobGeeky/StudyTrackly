@@ -18,9 +18,12 @@ import { formatMinutes } from "@/lib/format";
 
 type RadarPoint = { name: string; hours: number };
 
+type Period = "day" | "week" | "month" | "total";
+
 export function DashboardPage() {
   const { stats, reload } = useOutletContext<AppOutletContext>();
   const [radar, setRadar] = useState<RadarPoint[]>([]);
+  const [period, setPeriod] = useState<Period>("day");
 
   useEffect(() => {
     void api<{ weekdays: RadarPoint[] }>("/api/stats/weekday-radar").then((r) =>
@@ -38,9 +41,7 @@ export function DashboardPage() {
   );
 
   const dailyGoal = stats?.term?.dailyGoalMinutes ?? 720;
-  const todayM = stats?.totals?.todayMinutes ?? 0;
   const elapsedDays = stats?.progress?.elapsedDays ?? 1;
-  const dayPct = dailyGoal > 0 ? Math.min(100, (todayM / dailyGoal) * 100) : 0;
 
   const maxRadar = Math.max(1, ...radar.map((x) => x.hours));
 
@@ -53,6 +54,61 @@ export function DashboardPage() {
     );
   }
 
+  const totals = stats.totals;
+  const term = stats.term;
+
+  const periodMinutes = (() => {
+    switch (period) {
+      case "day":
+        return totals.todayMinutes ?? 0;
+      case "week":
+        return totals.weekMinutes ?? 0;
+      case "month":
+        return totals.monthMinutes ?? 0;
+      case "total":
+        return totals.totalMinutes ?? 0;
+      default:
+        return 0;
+    }
+  })();
+
+  const periodSessions = (() => {
+    switch (period) {
+      case "day":
+        return totals.todaySessionCount ?? 0;
+      case "week":
+        return totals.weekSessionCount ?? 0;
+      case "month":
+        return totals.monthSessionCount ?? 0;
+      case "total":
+        return totals.sessionCount ?? 0;
+      default:
+        return 0;
+    }
+  })();
+
+  const periodGoalMinutes = (() => {
+    const daily = term?.dailyGoalMinutes ?? 720;
+    switch (period) {
+      case "day":
+        return daily;
+      case "week":
+        return daily * 7;
+      case "month": {
+        const d = new Date();
+        const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        return daily * dim;
+      }
+      case "total":
+        return (term?.studyGoalHours ?? 600) * 60;
+      default:
+        return daily;
+    }
+  })();
+
+  const periodStudyPct =
+    periodGoalMinutes > 0 ? Math.min(100, (periodMinutes / periodGoalMinutes) * 100) : 0;
+
   return (
     <>
       <Header title="Dashboard" stats={stats} />
@@ -63,7 +119,7 @@ export function DashboardPage() {
               {[
                 { label: "Today", m: stats?.totals?.todayMinutes ?? 0 },
                 { label: "Week", m: stats?.totals?.weekMinutes ?? 0 },
-                { label: "Month", m: stats?.totals?.weekMinutes ?? 0 },
+                { label: "Month", m: stats?.totals?.monthMinutes ?? 0 },
               ].map((x) => (
                 <div
                   key={x.label}
@@ -78,13 +134,19 @@ export function DashboardPage() {
             <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-[0.9375rem] font-medium text-slate-200">
-                  Streaks • {stats?.streak ?? 0} days
+                  Current streak • {stats?.streak ?? 0} days
                 </span>
                 <span className="text-lg">🔥</span>
               </div>
               <p className="mt-2 text-[0.8125rem] text-slate-500">
                 You&apos;ve studied for {stats?.streak ?? 0} days in a row. Keep going!
               </p>
+              <div className="mt-3 pt-3 border-t border-slate-800">
+                <p className="text-[0.8125rem] text-slate-500">Best streak</p>
+                <p className="mt-1 text-[1.1rem] font-semibold text-slate-200">
+                  {stats?.bestStreak ?? 0} days
+                </p>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
@@ -123,44 +185,53 @@ export function DashboardPage() {
 
           <div className="space-y-4">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-              <div className="flex gap-2 text-[0.8125rem]">
-                {["Day", "Week", "Month", "Total"].map((t, i) => (
-                  <span
-                    key={t}
+              <div className="flex flex-wrap gap-2 text-[0.8125rem]">
+                {(
+                  [
+                    ["day", "Day"],
+                    ["week", "Week"],
+                    ["month", "Month"],
+                    ["total", "Total"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPeriod(key)}
                     className={
-                      i === 0
+                      period === key
                         ? "rounded-full bg-slate-800 px-2 py-1 text-white"
-                        : "text-slate-500"
+                        : "text-slate-500 hover:text-slate-300"
                     }
                   >
-                    {t}
-                  </span>
+                    {label}
+                  </button>
                 ))}
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[0.9375rem]">
                 <div>
                   <p className="text-[0.8125rem] text-slate-500">Study time</p>
-                  <p className="mt-1 font-semibold">{formatMinutes(todayM)}</p>
+                  <p className="mt-1 font-semibold">{formatMinutes(periodMinutes)}</p>
                 </div>
                 <div>
                   <p className="text-[0.8125rem] text-slate-500">Goal</p>
-                  <p className="mt-1 font-semibold">{formatMinutes(dailyGoal)}</p>
+                  <p className="mt-1 font-semibold">{formatMinutes(periodGoalMinutes)}</p>
                 </div>
                 <div>
                   <p className="text-[0.8125rem] text-slate-500">Sessions</p>
-                  <p className="mt-1 font-semibold">{stats?.totals?.sessionCount ?? 0}</p>
+                  <p className="mt-1 font-semibold">{periodSessions}</p>
                 </div>
               </div>
               <div className="mt-4 space-y-2">
                 <div>
                   <div className="flex justify-between text-[0.8125rem] text-slate-500">
                     <span>Study progress</span>
-                    <span>{dayPct.toFixed(1)}%</span>
+                    <span>{periodStudyPct.toFixed(1)}%</span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-800">
                     <div
                       className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${dayPct}%` }}
+                      style={{ width: `${periodStudyPct}%` }}
                     />
                   </div>
                 </div>

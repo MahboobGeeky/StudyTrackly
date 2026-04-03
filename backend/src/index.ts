@@ -2,7 +2,7 @@ import cors from "cors";
 import "dotenv/config";
 import express from "express";
 import { connectDb } from "./lib/db.js";
-import { env } from "./lib/env.js";
+import { env, isGoogleOAuthConfigured } from "./lib/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { requireAuth } from "./middleware/auth.js";
 import authRouter from "./routes/auth.js";
@@ -43,6 +43,15 @@ connectDb()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API listening on http://localhost:${PORT}`);
+      if (!isGoogleOAuthConfigured()) {
+        console.warn(
+          "[auth] Google OAuth disabled: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env"
+        );
+      } else {
+        console.log(
+          `[auth] Google OAuth redirect URI (must match Google Cloud exactly): ${env.GOOGLE_CALLBACK_URL}`
+        );
+      }
     });
   })
   .catch((e) => {
