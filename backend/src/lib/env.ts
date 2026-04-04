@@ -11,6 +11,10 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional().default(""),
   GOOGLE_CALLBACK_URL: z.string().url().optional().default("http://localhost:4000/api/auth/google/callback"),
   FRONTEND_URL: z.string().url().optional().default("http://localhost:5173"),
+  /** Upstash Redis REST URL — optional, caching is skipped if omitted */
+  UPSTASH_REDIS_REST_URL: z.string().optional().default(""),
+  /** Upstash Redis REST token — optional, caching is skipped if omitted */
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional().default(""),
 });
 
 const result = schema.safeParse(process.env);

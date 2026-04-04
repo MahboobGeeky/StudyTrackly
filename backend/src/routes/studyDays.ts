@@ -5,20 +5,11 @@ import { sessionDurationMinutes } from "../lib/time.js";
 import { DayGoalOverride } from "../models/DayGoalOverride.js";
 import { Session } from "../models/Session.js";
 import { Term } from "../models/Term.js";
-
+import { dateKeyTZ, startOfDayTZ, addDaysTZ } from "../lib/date-utils.js";
 const router = Router();
 
-function dateKeyFromDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function parseKey(key: string): Date {
-  const [y, m, d] = key.split("-").map(Number);
-  return new Date(y, m - 1, d, 12, 0, 0, 0);
-}
+const dateKeyFromDate = dateKeyTZ as (d: Date | string | number) => string;
+const parseKey = startOfDayTZ as (key: string | Date | number) => Date;
 
 router.get("/", async (req, res, next) => {
   try {
@@ -77,7 +68,7 @@ router.get("/", async (req, res, next) => {
         sharePriceMinutes: cumulativeGap,
         progressPct,
       });
-      cursor.setDate(cursor.getDate() + 1);
+      cursor = addDaysTZ(cursor, 1);
     }
 
     res.json({ termId, rows });

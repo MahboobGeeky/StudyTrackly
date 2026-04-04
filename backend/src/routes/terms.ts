@@ -7,8 +7,19 @@ import { Course } from "../models/Course.js";
 import { DayGoalOverride } from "../models/DayGoalOverride.js";
 import { Session } from "../models/Session.js";
 import { Term } from "../models/Term.js";
+import {
+  cacheGet,
+  cacheKey,
+  cacheSet,
+  invalidateAllUserCache,
+  invalidateTermsCache,
+} from "../lib/cache.js";
+import { startOfDayTZ, endOfDayTZ } from "../lib/date-utils.js";
 
 const router = Router();
+
+/** Terms cached for 30 s */
+const TERMS_TTL = 30;
 
 const termBody = z.object({
   name: z.string().min(1),
@@ -24,88 +35,82 @@ const termBody = z.object({
 });
 
 /**
- * Treat the first `YYYY-MM-DD` in each ISO string as the calendar day in UTC (same convention as
- * session `date`: stored as UTC noon / end-of-day). Avoids host timezone shifting the range.
+ * Treat the first `YYYY-MM-DD` in each ISO string as the calendar day in Asia/Kolkata
  */
 function parseTermDates(startRaw: string, endRaw: string) {
-  const startDate = utcDateFromPickerIso(startRaw, "start");
-  const endDate = utcDateFromPickerIso(endRaw, "end");
+  let startDate: Date;
+  let endDate: Date;
+  
+  const sMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(startRaw.trim());
+  if (sMatch) {
+    startDate = startOfDayTZ(startRaw.trim().slice(0, 10));
+  } else {
+    startDate = startOfDayTZ(new Date(startRaw.trim()));
+  }
+
+  const eMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(endRaw.trim());
+  if (eMatch) {
+    endDate = endOfDayTZ(endRaw.trim().slice(0, 10));
+  } else {
+    endDate = endOfDayTZ(new Date(endRaw.trim()));
+  }
+
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
     throw new Error("Invalid start or end date");
   }
-  const sDay = Date.UTC(
-    startDate.getUTCFullYear(),
-    startDate.getUTCMonth(),
-    startDate.getUTCDate()
-  );
-  const eDay = Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate());
-  if (eDay < sDay) {
+
+  if (endDate.getTime() < startDate.getTime()) {
     throw new Error("End date must be on or after start date");
   }
+
   return { startDate, endDate };
 }
 
-function utcDateFromPickerIso(raw: string, which: "start" | "end"): Date {
-  const trimmed = raw.trim();
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
-  if (m) {
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const d = Number(m[3]);
-    if (which === "start") {
-      return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0, 0));
-    }
-    return new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
-  }
-  const fallback = new Date(trimmed);
-  if (Number.isNaN(fallback.getTime())) {
-    throw new Error("Invalid start or end date");
-  }
-  if (which === "start") {
-    return new Date(
-      Date.UTC(
-        fallback.getUTCFullYear(),
-        fallback.getUTCMonth(),
-        fallback.getUTCDate(),
-        12,
-        0,
-        0,
-        0
-      )
-    );
-  }
-  return new Date(
-    Date.UTC(
-      fallback.getUTCFullYear(),
-      fallback.getUTCMonth(),
-      fallback.getUTCDate(),
-      23,
-      59,
-      59,
-      999
-    )
-  );
-}
+// ─── GET /terms ───────────────────────────────────────────────────────────────
 
 router.get("/", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
+
+    const key = cacheKey(req.userId!, "terms", "list");
+    const cached = await cacheGet<unknown[]>(key);
+    if (cached) return res.json(cached);
+
     const terms = await Term.find({ userId: req.userId }).sort({ startDate: -1 }).lean();
-    res.json(terms.map((t) => withId(t)));
+    const result = terms.map((t) => withId(t));
+
+    await cacheSet(key, result, TERMS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
 
+// ─── GET /terms/active ────────────────────────────────────────────────────────
+
 router.get("/active", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
+
+    const key = cacheKey(req.userId!, "terms", "active");
+    const cached = await cacheGet<object | null>(key);
+    // null is a valid cached value (no active term), differentiate from cache miss
+    if (cached !== null) return res.json(cached);
+
     const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
-    res.json(term ? withId(term) : null);
+    const result = term ? withId(term) : null;
+
+    // Only cache a positive result to avoid caching a cold-start null
+    if (result !== null) {
+      await cacheSet(key, result, TERMS_TTL);
+    }
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
+
+// ─── POST /terms ──────────────────────────────────────────────────────────────
 
 router.post("/", async (req, res, next) => {
   try {
@@ -114,11 +119,13 @@ router.post("/", async (req, res, next) => {
     const studyGoalHours =
       data.studyGoalHours ?? studyGoalHoursFromDaily(startDate, endDate, data.dailyGoalMinutes);
 
+    const userId = (req as AuthedRequest).userId!;
+
     if (data.isActive !== false) {
-      await Term.updateMany({ userId: (req as AuthedRequest).userId }, { isActive: false });
+      await Term.updateMany({ userId }, { isActive: false });
     }
     const term = await Term.create({
-      userId: (req as AuthedRequest).userId,
+      userId,
       name: data.name,
       startDate,
       endDate,
@@ -130,6 +137,10 @@ router.post("/", async (req, res, next) => {
       isActive: data.isActive ?? true,
       examCount: 0,
     });
+
+    // New term becomes active → wipe everything for this user
+    await invalidateAllUserCache(userId);
+
     res.status(201).json(withId(term.toObject()));
   } catch (e) {
     if (e instanceof Error && e.message.includes("date")) {
@@ -139,10 +150,12 @@ router.post("/", async (req, res, next) => {
   }
 });
 
+// ─── PATCH /terms/:id ─────────────────────────────────────────────────────────
+
 router.patch("/:id", async (req, res, next) => {
   try {
     const data = termBody.partial().parse(req.body);
-    const userId = (req as AuthedRequest).userId;
+    const userId = (req as AuthedRequest).userId!;
 
     const existing = await Term.findOne({ _id: req.params.id, userId }).lean();
     if (!existing) return res.status(404).json({ error: "Term not found" });
@@ -188,6 +201,10 @@ router.patch("/:id", async (req, res, next) => {
       { new: true }
     ).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
+
+    // Term change → wipe all user cache since active term affects every stat query
+    await invalidateAllUserCache(userId);
+
     res.json(withId(term));
   } catch (e) {
     if (e instanceof Error && e.message.includes("date")) {
@@ -197,9 +214,11 @@ router.patch("/:id", async (req, res, next) => {
   }
 });
 
+// ─── POST /terms/:id/activate ─────────────────────────────────────────────────
+
 router.post("/:id/activate", async (req, res, next) => {
   try {
-    const userId = (req as AuthedRequest).userId;
+    const userId = (req as AuthedRequest).userId!;
     await Term.updateMany({ userId }, { isActive: false });
     const term = await Term.findOneAndUpdate(
       { _id: req.params.id, userId },
@@ -207,15 +226,21 @@ router.post("/:id/activate", async (req, res, next) => {
       { new: true }
     ).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
+
+    // Switching active term → wipe everything
+    await invalidateAllUserCache(userId);
+
     res.json(withId(term));
   } catch (e) {
     next(e);
   }
 });
 
+// ─── DELETE /terms/:id ────────────────────────────────────────────────────────
+
 router.delete("/:id", async (req, res, next) => {
   try {
-    const userId = (req as AuthedRequest).userId;
+    const userId = (req as AuthedRequest).userId!;
     const term = await Term.findOne({ _id: req.params.id, userId }).lean();
     if (!term) return res.status(404).json({ error: "Term not found" });
 
@@ -233,6 +258,10 @@ router.delete("/:id", async (req, res, next) => {
         await Term.updateOne({ _id: fallback._id }, { isActive: true });
       }
     }
+
+    // Term deleted → wipe full user cache
+    await invalidateAllUserCache(userId);
+
     res.status(204).send();
   } catch (e) {
     next(e);

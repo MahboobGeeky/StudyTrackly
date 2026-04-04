@@ -4,26 +4,20 @@ import { sessionDurationMinutes } from "../lib/time.js";
 import { Course } from "../models/Course.js";
 import { Session } from "../models/Session.js";
 import { Term } from "../models/Term.js";
+import { cacheGet, cacheKey, cacheSet } from "../lib/cache.js";
+import { startOfDayTZ, endOfDayTZ, addDaysTZ, dateKeyTZ, calendarDayRangeTZ } from "../lib/date-utils.js";
 
 const router = Router();
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+// ─── TTLs ───────────────────────────────────────────────────────────────────
+/** Stat endpoints are expensive aggregations — cache for 60 s */
+const STATS_TTL = 60;
 
-function endOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
+// ─── Date helpers ────────────────────────────────────────────────────────────
 
-function addDays(d: Date, n: number) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
+const startOfDay = startOfDayTZ as (d: Date | string | number) => Date;
+const endOfDay = endOfDayTZ as (d: Date | string | number) => Date;
+const addDays = addDaysTZ as (d: Date | string | number, n: number) => Date;
 
 /** @internal exported for tests */
 export function computeStreak(sessionDates: Date[], today: Date): number {
@@ -32,6 +26,12 @@ export function computeStreak(sessionDates: Date[], today: Date): number {
   );
   let streak = 0;
   let cursor = startOfDay(today);
+
+  // If today isn't present, the streak might still be intact if they studied yesterday
+  if (!days.has(cursor.getTime())) {
+    cursor = addDays(cursor, -1);
+  }
+
   while (days.has(cursor.getTime())) {
     streak += 1;
     cursor = addDays(cursor, -1);
@@ -40,6 +40,7 @@ export function computeStreak(sessionDates: Date[], today: Date): number {
 }
 
 export function computeBestStreak(sessionDates: Date[]): number {
+  
   const days = new Set(sessionDates.map((d) => startOfDay(d).getTime()));
   if (days.size === 0) return 0;
 
@@ -65,12 +66,19 @@ export function computeBestStreak(sessionDates: Date[]): number {
   return best;
 }
 
+// ─── /dashboard ──────────────────────────────────────────────────────────────
+
 router.get("/dashboard", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
+
+    const key = cacheKey(req.userId!, "stats", req.originalUrl);
+    const cached = await cacheGet<object>(key);
+    if (cached) return res.json(cached);
+
     const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
-      return res.json({
+      const empty = {
         term: null,
         totals: {
           totalMinutes: 0,
@@ -93,7 +101,8 @@ router.get("/dashboard", async (_req, res, next) => {
         courseBreakdown: [],
         streak: 0,
         bestStreak: 0,
-      });
+      };
+      return res.json(empty);
     }
 
     const now = new Date();
@@ -169,7 +178,7 @@ router.get("/dashboard", async (_req, res, next) => {
       sessions.map((s) => startOfDay(s.date).getTime())
     ).size;
 
-    res.json({
+    const result = {
       term: {
         id: String(term._id),
         name: term.name,
@@ -203,20 +212,30 @@ router.get("/dashboard", async (_req, res, next) => {
       courseBreakdown: Object.values(courseMinutes),
       streak,
       bestStreak,
-    });
+    };
+
+    await cacheSet(key, result, STATS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
 
+// ─── /calendar-line ──────────────────────────────────────────────────────────
+
 router.get("/calendar-line", async (req, res, next) => {
   try {
     const authed = req as AuthedRequest;
-    const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
-    if (!term) return res.json({ points: [] });
 
     const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
     const month = req.query.month != null ? Number(req.query.month) : new Date().getMonth();
+
+    const key = cacheKey(authed.userId!, "stats", req.originalUrl);
+    const cached = await cacheGet<object>(key);
+    if (cached) return res.json(cached);
+
+    const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
+    if (!term) return res.json({ points: [] });
 
     const monthStart = new Date(year, month, 1);
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
@@ -226,9 +245,9 @@ router.get("/calendar-line", async (req, res, next) => {
     for (const s of sessions) {
       const dt = new Date(s.date);
       if (dt < monthStart || dt > monthEnd) continue;
-      const key = startOfDay(s.date).toISOString();
+      const key2 = startOfDay(s.date).toISOString();
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
-      byDay[key] = (byDay[key] ?? 0) + m;
+      byDay[key2] = (byDay[key2] ?? 0) + m;
     }
 
     const points = Object.entries(byDay).map(([iso, minutes]) => ({
@@ -236,15 +255,24 @@ router.get("/calendar-line", async (req, res, next) => {
       hours: Math.round((minutes / 60) * 10) / 10,
     }));
 
-    res.json({ points: points.sort((a, b) => a.date.localeCompare(b.date)) });
+    const result = { points: points.sort((a, b) => a.date.localeCompare(b.date)) };
+    await cacheSet(key, result, STATS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
 
+// ─── /weekday-radar ──────────────────────────────────────────────────────────
+
 router.get("/weekday-radar", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
+
+    const key = cacheKey(req.userId!, "stats", req.originalUrl);
+    const cached = await cacheGet<object>(key);
+    if (cached) return res.json(cached);
+
     const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
       return res.json({
@@ -266,22 +294,32 @@ router.get("/weekday-radar", async (_req, res, next) => {
     }
 
     const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const weekdays = names.map((name, i) => ({
-      name,
-      hours: Math.round((totals[i] / 60) * 10) / 10,
-      sessions: counts[i],
-    }));
+    const result = {
+      weekdays: names.map((name, i) => ({
+        name,
+        hours: Math.round((totals[i] / 60) * 10) / 10,
+        sessions: counts[i],
+      })),
+    };
 
-    res.json({ weekdays });
+    await cacheSet(key, result, STATS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
 
+// ─── /study-bars ─────────────────────────────────────────────────────────────
+
 router.get("/study-bars", async (req, res, next) => {
   try {
     const mode = (req.query.mode as string) === "months" ? "months" : "weeks";
     const authed = req as AuthedRequest;
+
+    const key = cacheKey(authed.userId!, "stats", req.originalUrl);
+    const cached = await cacheGet<object>(key);
+    if (cached) return res.json(cached);
+
     const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
     if (!term) return res.json({ bars: [] });
 
@@ -291,18 +329,18 @@ router.get("/study-bars", async (req, res, next) => {
     const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
     for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
-      let key: string;
+      let label: string;
       if (mode === "months") {
-        key = `${s.date.getFullYear()}-${String(s.date.getMonth() + 1).padStart(2, "0")}`;
+        label = `${s.date.getFullYear()}-${String(s.date.getMonth() + 1).padStart(2, "0")}`;
       } else {
         const ws = startOfDay(s.date);
         const day = ws.getDay();
         const diff = ws.getDate() - day + (day === 0 ? -6 : 1);
         const weekStart = new Date(ws);
         weekStart.setDate(diff);
-        key = weekStart.toISOString().slice(0, 10);
+        label = weekStart.toISOString().slice(0, 10);
       }
-      byLabel[key] = (byLabel[key] ?? 0) + m;
+      byLabel[label] = (byLabel[label] ?? 0) + m;
     }
 
     const bars = Object.entries(byLabel)
@@ -313,54 +351,38 @@ router.get("/study-bars", async (req, res, next) => {
       .sort((a, b) => a.label.localeCompare(b.label))
       .slice(-12);
 
-    res.json({ bars, generatedAt: now.toISOString() });
+    const result = { bars, generatedAt: now.toISOString() };
+    await cacheSet(key, result, STATS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
 
-/** Calendar day key in UTC — matches session `date` (stored as UTC noon) and term dates. */
-function dateKeyUtc(d: Date): string {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+// ─── Internal date helpers ────────────────────────────────────────────────────
 
-function utcCalendarDayRange(value: Date | string) {
-  const iso = typeof value === "string" ? value : value.toISOString();
-  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(iso);
-  if (!match) {
-    const d = new Date(value);
-    return {
-      start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)),
-      end: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999)),
-    };
-  }
+/** Calendar day key in IST. */
+const dateKeyUtc = dateKeyTZ as (d: Date | string | number) => string;
+const utcCalendarDayRange = calendarDayRangeTZ as (value: Date | string | number) => { start: Date; end: Date };
 
-  const [, year, month, day] = match;
-  const y = Number(year);
-  const mo = Number(month) - 1;
-  const d = Number(day);
-
-  return {
-    start: new Date(Date.UTC(y, mo, d, 0, 0, 0, 0)),
-    end: new Date(Date.UTC(y, mo, d, 23, 59, 59, 999)),
-  };
-}
+// ─── /daily-stacked ──────────────────────────────────────────────────────────
 
 router.get("/daily-stacked", async (req, res, next) => {
   try {
     const authed = req as AuthedRequest;
+    const daysQuery = req.query.days ? Number(req.query.days) : null;
+    const daysParam = daysQuery == null || Number.isNaN(daysQuery) ? "term" : String(daysQuery);
+
+    const key = cacheKey(authed.userId!, "stats", req.originalUrl);
+    const cached = await cacheGet<object>(key);
+    if (cached) return res.json(cached);
+
     const term = await Term.findOne({ userId: authed.userId, isActive: true }).lean();
     if (!term) return res.json({ rows: [], courses: [], averageHoursPerDay: 0 });
 
     const now = new Date();
 
-    // If `days` is provided, keep the old behavior; otherwise, use full active term range.
-    const daysQuery = req.query.days ? Number(req.query.days) : null;
     const useTermRange = daysQuery == null || Number.isNaN(daysQuery);
-
     let rangeStart: Date;
     let rangeEnd: Date;
 
@@ -380,7 +402,6 @@ router.get("/daily-stacked", async (req, res, next) => {
       rangeEnd = end;
     }
 
-    // Average is computed from term start until "today" (or term end, whichever comes first).
     const avgEnd = now > rangeEnd ? new Date(rangeEnd) : now;
     avgEnd.setHours(23, 59, 59, 999);
     const avgDayKey = dateKeyUtc(avgEnd);
@@ -413,10 +434,7 @@ router.get("/daily-stacked", async (req, res, next) => {
         rangeStart.getUTCFullYear(),
         rangeStart.getUTCMonth(),
         rangeStart.getUTCDate(),
-        0,
-        0,
-        0,
-        0
+        0, 0, 0, 0
       )
     );
     const last = new Date(
@@ -424,10 +442,7 @@ router.get("/daily-stacked", async (req, res, next) => {
         rangeEnd.getUTCFullYear(),
         rangeEnd.getUTCMonth(),
         rangeEnd.getUTCDate(),
-        0,
-        0,
-        0,
-        0
+        0, 0, 0, 0
       )
     );
     while (cur.getTime() <= last.getTime()) {
@@ -470,19 +485,29 @@ router.get("/daily-stacked", async (req, res, next) => {
 
     const avgPerDay = avgDayCount > 0 ? totalMinutesUpToAvg / avgDayCount / 60 : 0;
 
-    res.json({
+    const result = {
       rows,
       courses,
       averageHoursPerDay: Math.round(avgPerDay * 100) / 100,
-    });
+    };
+
+    await cacheSet(key, result, STATS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
 });
 
+// ─── /time-buckets ───────────────────────────────────────────────────────────
+
 router.get("/time-buckets", async (_req, res, next) => {
   try {
     const req = _req as AuthedRequest;
+
+    const key = cacheKey(req.userId!, "stats", req.originalUrl);
+    const cached = await cacheGet<object>(key);
+    if (cached) return res.json(cached);
+
     const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
     if (!term) {
       return res.json({
@@ -509,12 +534,15 @@ router.get("/time-buckets", async (_req, res, next) => {
     }
 
     const names = ["Night", "Morning", "Afternoon", "Evening"];
-    const buckets = names.map((name, i) => ({
-      name,
-      hours: Math.round((totals[i] / 60) * 10) / 10,
-    }));
+    const result = {
+      buckets: names.map((name, i) => ({
+        name,
+        hours: Math.round((totals[i] / 60) * 10) / 10,
+      })),
+    };
 
-    res.json({ buckets });
+    await cacheSet(key, result, STATS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }

@@ -3,8 +3,19 @@ import { z } from "zod";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { Course } from "../models/Course.js";
 import { Session } from "../models/Session.js";
+import {
+  cacheGet,
+  cacheKey,
+  cacheSet,
+  invalidateSessionsCache,
+  invalidateStatsCache,
+} from "../lib/cache.js";
+import { startOfDayTZ } from "../lib/date-utils.js";
 
 const router = Router();
+
+/** Sessions list cached for 30 s — shorter TTL because data changes more often */
+const SESSIONS_TTL = 30;
 
 const timeHHMM = z
   .string()
@@ -36,14 +47,24 @@ router.get("/", async (req, res, next) => {
   try {
     const authed = req as AuthedRequest;
     const termId = req.query.termId as string | undefined;
-    const from = req.query.from ? new Date(req.query.from as string) : undefined;
-    const to = req.query.to ? new Date(req.query.to as string) : undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+
+    // Build a stable cache key using originalUrl
+    const key = cacheKey(
+      authed.userId!,
+      "sessions",
+      req.originalUrl
+    );
+    const cached = await cacheGet<unknown[]>(key);
+    if (cached) return res.json(cached);
+
     const query: Record<string, unknown> = { userId: authed.userId };
     if (termId) query.termId = termId;
     if (from || to) {
       query.date = {
-        ...(from ? { $gte: from } : {}),
-        ...(to ? { $lte: to } : {}),
+        ...(from ? { $gte: startOfDayTZ(from) } : {}),
+        ...(to ? { $lte: startOfDayTZ(to) } : {}),
       };
     }
     const sessions = await Session.find(query).sort({ date: -1, startTime: -1 }).lean();
@@ -52,13 +73,14 @@ router.get("/", async (req, res, next) => {
     const courses = await Course.find({ userId: authed.userId, _id: { $in: courseIds } }).lean();
     const courseMap = new Map(courses.map((c) => [String(c._id), c]));
 
-    res.json(
-      sessions.map((s) => ({
-        ...s,
-        id: String(s._id),
-        course: courseMap.get(String(s.courseId)),
-      }))
-    );
+    const result = sessions.map((s) => ({
+      ...s,
+      id: String(s._id),
+      course: courseMap.get(String(s.courseId)),
+    }));
+
+    await cacheSet(key, result, SESSIONS_TTL);
+    res.json(result);
   } catch (e) {
     next(e);
   }
@@ -72,7 +94,7 @@ router.post("/", async (req, res, next) => {
       userId: authed.userId,
       termId: data.termId,
       courseId: data.courseId,
-      date: new Date(data.date),
+      date: startOfDayTZ(data.date),
       startTime: data.startTime,
       endTime: data.endTime,
       breakMinutes: data.breakMinutes ?? 0,
@@ -81,6 +103,13 @@ router.post("/", async (req, res, next) => {
       label: data.label ?? "",
     });
     const course = await Course.findOne({ _id: data.courseId, userId: authed.userId }).lean();
+
+    // Invalidate sessions list + all stats (session changes affect every stat)
+    await Promise.all([
+      invalidateSessionsCache(authed.userId!),
+      invalidateStatsCache(authed.userId!),
+    ]);
+
     res.status(201).json({ ...session.toObject(), id: String(session._id), course });
   } catch (e) {
     next(e);
@@ -95,7 +124,7 @@ router.patch("/:id", async (req, res, next) => {
       { _id: req.params.id, userId: authed.userId },
       {
         ...(data.courseId && { courseId: data.courseId }),
-        ...(data.date && { date: new Date(data.date) }),
+        ...(data.date && { date: startOfDayTZ(data.date) }),
         ...(data.startTime && { startTime: data.startTime }),
         ...(data.endTime && { endTime: data.endTime }),
         ...(data.breakMinutes != null && { breakMinutes: data.breakMinutes }),
@@ -107,6 +136,12 @@ router.patch("/:id", async (req, res, next) => {
     ).lean();
     if (!session) return res.status(404).json({ error: "Session not found" });
     const course = await Course.findOne({ _id: session.courseId, userId: authed.userId }).lean();
+
+    await Promise.all([
+      invalidateSessionsCache(authed.userId!),
+      invalidateStatsCache(authed.userId!),
+    ]);
+
     res.json({ ...session, id: String(session._id), course });
   } catch (e) {
     next(e);
@@ -117,6 +152,12 @@ router.delete("/:id", async (req, res, next) => {
   try {
     const authed = req as AuthedRequest;
     await Session.deleteOne({ _id: req.params.id, userId: authed.userId });
+
+    await Promise.all([
+      invalidateSessionsCache(authed.userId!),
+      invalidateStatsCache(authed.userId!),
+    ]);
+
     res.status(204).send();
   } catch (e) {
     next(e);

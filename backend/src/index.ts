@@ -3,6 +3,7 @@ import "dotenv/config";
 import express from "express";
 import { connectDb } from "./lib/db.js";
 import { env, isGoogleOAuthConfigured } from "./lib/env.js";
+import { getRedis } from "./lib/redis.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { requireAuth } from "./middleware/auth.js";
 import authRouter from "./routes/auth.js";
@@ -25,7 +26,7 @@ app.use(
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, cache: getRedis() !== null ? "redis" : "disabled" });
 });
 
 app.use("/api/auth", authRouter);
