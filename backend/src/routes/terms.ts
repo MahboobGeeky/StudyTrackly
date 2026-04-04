@@ -23,16 +23,68 @@ const termBody = z.object({
   isActive: z.boolean().optional(),
 });
 
+/**
+ * Treat the first `YYYY-MM-DD` in each ISO string as the calendar day in UTC (same convention as
+ * session `date`: stored as UTC noon / end-of-day). Avoids host timezone shifting the range.
+ */
 function parseTermDates(startRaw: string, endRaw: string) {
-  const startDate = new Date(startRaw);
-  const endDate = new Date(endRaw);
+  const startDate = utcDateFromPickerIso(startRaw, "start");
+  const endDate = utcDateFromPickerIso(endRaw, "end");
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
     throw new Error("Invalid start or end date");
   }
-  if (endDate < startDate) {
+  const sDay = Date.UTC(
+    startDate.getUTCFullYear(),
+    startDate.getUTCMonth(),
+    startDate.getUTCDate()
+  );
+  const eDay = Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate());
+  if (eDay < sDay) {
     throw new Error("End date must be on or after start date");
   }
   return { startDate, endDate };
+}
+
+function utcDateFromPickerIso(raw: string, which: "start" | "end"): Date {
+  const trimmed = raw.trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (which === "start") {
+      return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0, 0));
+    }
+    return new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
+  }
+  const fallback = new Date(trimmed);
+  if (Number.isNaN(fallback.getTime())) {
+    throw new Error("Invalid start or end date");
+  }
+  if (which === "start") {
+    return new Date(
+      Date.UTC(
+        fallback.getUTCFullYear(),
+        fallback.getUTCMonth(),
+        fallback.getUTCDate(),
+        12,
+        0,
+        0,
+        0
+      )
+    );
+  }
+  return new Date(
+    Date.UTC(
+      fallback.getUTCFullYear(),
+      fallback.getUTCMonth(),
+      fallback.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
 }
 
 router.get("/", async (_req, res, next) => {

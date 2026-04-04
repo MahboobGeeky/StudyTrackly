@@ -1,11 +1,9 @@
-/** Inclusive calendar days from start → end (local midnight boundaries). */
+/** Inclusive calendar days from start → end (UTC date boundaries; matches session `date` storage). */
 export function inclusiveTermDays(start: Date, end: Date): number {
-  const s = new Date(start);
-  s.setHours(0, 0, 0, 0);
-  const e = new Date(end);
-  e.setHours(0, 0, 0, 0);
-  if (e.getTime() < s.getTime()) return 0;
-  return Math.round((e.getTime() - s.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  const s = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+  const e = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  if (e < s) return 0;
+  return Math.round((e - s) / (24 * 60 * 60 * 1000)) + 1;
 }
 
 /** Total study hours for the term = days × daily hours from dailyGoalMinutes. */

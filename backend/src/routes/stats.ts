@@ -319,11 +319,34 @@ router.get("/study-bars", async (req, res, next) => {
   }
 });
 
-function dateKeyFromDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+/** Calendar day key in UTC — matches session `date` (stored as UTC noon) and term dates. */
+function dateKeyUtc(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function utcCalendarDayRange(value: Date | string) {
+  const iso = typeof value === "string" ? value : value.toISOString();
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(iso);
+  if (!match) {
+    const d = new Date(value);
+    return {
+      start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)),
+      end: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999)),
+    };
+  }
+
+  const [, year, month, day] = match;
+  const y = Number(year);
+  const mo = Number(month) - 1;
+  const d = Number(day);
+
+  return {
+    start: new Date(Date.UTC(y, mo, d, 0, 0, 0, 0)),
+    end: new Date(Date.UTC(y, mo, d, 23, 59, 59, 999)),
+  };
 }
 
 router.get("/daily-stacked", async (req, res, next) => {
@@ -338,29 +361,29 @@ router.get("/daily-stacked", async (req, res, next) => {
     const daysQuery = req.query.days ? Number(req.query.days) : null;
     const useTermRange = daysQuery == null || Number.isNaN(daysQuery);
 
-    let start: Date;
-    let end: Date;
+    let rangeStart: Date;
+    let rangeEnd: Date;
 
     if (useTermRange) {
-      start = new Date(term.startDate);
-      start.setHours(0, 0, 0, 0);
-
-      end = new Date(term.endDate);
-      end.setHours(23, 59, 59, 999);
+      const startRange = utcCalendarDayRange(term.startDate);
+      const endRange = utcCalendarDayRange(term.endDate);
+      rangeStart = startRange.start;
+      rangeEnd = endRange.end;
     } else {
       const days = Math.min(60, Math.max(1, Number(daysQuery) || 14));
-      end = new Date();
-      // IMPORTANT: remove time-of-day from range checks so "today" is always included.
-      start = new Date(end);
+      const end = new Date();
+      const start = new Date(end);
       start.setDate(start.getDate() - (days - 1));
       start.setHours(0, 0, 0, 0);
       end.setHours(23, 59, 59, 999);
+      rangeStart = start;
+      rangeEnd = end;
     }
 
     // Average is computed from term start until "today" (or term end, whichever comes first).
-    const avgEnd = now > end ? new Date(end) : now;
+    const avgEnd = now > rangeEnd ? new Date(rangeEnd) : now;
     avgEnd.setHours(23, 59, 59, 999);
-    const avgDayKey = dateKeyFromDate(avgEnd);
+    const avgDayKey = dateKeyUtc(avgEnd);
 
     const byDayCourse = new Map<string, Map<string, number>>();
     const courseNames = new Map<string, string>();
@@ -375,8 +398,8 @@ router.get("/daily-stacked", async (req, res, next) => {
     const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
     for (const s of sessions) {
       const d = new Date(s.date);
-      if (d < start || d > end) continue;
-      const dk = dateKeyFromDate(d);
+      if (d < rangeStart || d > rangeEnd) continue;
+      const dk = dateKeyUtc(d);
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       if (!byDayCourse.has(dk)) byDayCourse.set(dk, new Map());
       const inner = byDayCourse.get(dk)!;
@@ -385,10 +408,31 @@ router.get("/daily-stacked", async (req, res, next) => {
     }
 
     const dayKeys: string[] = [];
-    const cur = new Date(start);
-    while (cur <= end) {
-      dayKeys.push(dateKeyFromDate(cur));
-      cur.setDate(cur.getDate() + 1);
+    const cur = new Date(
+      Date.UTC(
+        rangeStart.getUTCFullYear(),
+        rangeStart.getUTCMonth(),
+        rangeStart.getUTCDate(),
+        0,
+        0,
+        0,
+        0
+      )
+    );
+    const last = new Date(
+      Date.UTC(
+        rangeEnd.getUTCFullYear(),
+        rangeEnd.getUTCMonth(),
+        rangeEnd.getUTCDate(),
+        0,
+        0,
+        0,
+        0
+      )
+    );
+    while (cur.getTime() <= last.getTime()) {
+      dayKeys.push(dateKeyUtc(cur));
+      cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
     const courseIds = [...courseNames.keys()];

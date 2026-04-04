@@ -5,20 +5,44 @@ import type { AppOutletContext } from "@/layouts/outletContext";
 import { api } from "@/lib/api";
 import { formatMinutes } from "@/lib/format";
 import type { SessionRow, Term } from "@/types";
-import { format } from "date-fns";
+function formatUtcSlash(iso: string, yearDigits: 2 | 4): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  if (yearDigits === 2) return `${dd}/${mm}/${String(y).slice(-2)}`;
+  return `${dd}/${mm}/${y}`;
+}
 
 function previewGoalHours(start: string, end: string, dailyMin: number): number {
-  const s = new Date(`${start}T00:00:00`);
-  const e = new Date(`${end}T00:00:00`);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e < s) return 0;
-  const days = Math.round((e.getTime() - s.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  const [ys, ms, ds] = start.split("-").map(Number);
+  const [ye, me, de] = end.split("-").map(Number);
+  if (![ys, ms, ds, ye, me, de].every((n) => Number.isFinite(n))) return 0;
+  const s = Date.UTC(ys, ms - 1, ds);
+  const e = Date.UTC(ye, me - 1, de);
+  if (e < s) return 0;
+  const days = Math.round((e - s) / (24 * 60 * 60 * 1000)) + 1;
   return Math.round(((days * dailyMin) / 60) * 100) / 100;
 }
 
+/** ISO from API → YYYY-MM-DD for date inputs (UTC calendar day, matches backend). */
 function toDateInputValue(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return format(d, "yyyy-MM-dd");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function utcIsoFromDateInput(dateStr: string, endOfDay: boolean): string {
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return "";
+  if (endOfDay) {
+    return new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999)).toISOString();
+  }
+  return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0, 0)).toISOString();
 }
 
 export function TermConfigPage() {
@@ -88,8 +112,8 @@ export function TermConfigPage() {
     e.preventDefault();
     const body = {
       name,
-      startDate: new Date(`${start}T00:00:00`).toISOString(),
-      endDate: new Date(`${end}T23:59:59`).toISOString(),
+      startDate: utcIsoFromDateInput(start, false),
+      endDate: utcIsoFromDateInput(end, true),
       dailyGoalMinutes: daily,
       isActive: true,
     };
@@ -134,13 +158,17 @@ export function TermConfigPage() {
   }
 
   async function saveTermDates(termId: string) {
-    const s = new Date(`${editStart}T00:00:00`);
-    const e = new Date(`${editEnd}T23:59:59`);
-    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
+    const startIso = utcIsoFromDateInput(editStart, false);
+    const endIso = utcIsoFromDateInput(editEnd, true);
+    if (!startIso || !endIso) {
       alert("Please choose valid start and end dates.");
       return;
     }
-    if (e < s) {
+    const [ys, ms, ds] = editStart.split("-").map(Number);
+    const [ye, me, de] = editEnd.split("-").map(Number);
+    if (
+      Date.UTC(ye, me - 1, de) < Date.UTC(ys, ms - 1, ds)
+    ) {
       alert("End date must be on or after the start date.");
       return;
     }
@@ -153,8 +181,8 @@ export function TermConfigPage() {
       await api(`/api/terms/${termId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          startDate: s.toISOString(),
-          endDate: e.toISOString(),
+          startDate: startIso,
+          endDate: endIso,
           dailyGoalMinutes,
         }),
       });
@@ -249,8 +277,7 @@ export function TermConfigPage() {
                     <p className="text-sm font-medium text-blue-300">Active term</p>
                     <h3 className="mt-1 text-lg font-semibold">{active.name}</h3>
                     <p className="text-xs text-slate-500">
-                      {format(new Date(active.startDate), "dd/MM/yy")} –{" "}
-                      {format(new Date(active.endDate), "dd/MM/yy")}
+                      {formatUtcSlash(active.startDate, 2)} – {formatUtcSlash(active.endDate, 2)}
                     </p>
                   </div>
                 </div>
@@ -449,8 +476,7 @@ export function TermConfigPage() {
                       </div>
                     ) : (
                       <p className="mt-1 text-xs text-slate-500">
-                        {format(new Date(t.startDate), "dd/MM/yyyy")} –{" "}
-                        {format(new Date(t.endDate), "dd/MM/yyyy")}
+                        {formatUtcSlash(t.startDate, 4)} – {formatUtcSlash(t.endDate, 4)}
                         <span className="text-slate-600">
                           {" "}
                           · goal {t.studyGoalHours}h (from daily {t.dailyGoalMinutes} min)
@@ -458,7 +484,7 @@ export function TermConfigPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
                     {!t.isActive && (
                       <button
                         type="button"
