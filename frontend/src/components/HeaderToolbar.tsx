@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { FullscreenTimer } from "@/components/FullscreenTimer";
 import { api } from "@/lib/api";
 import { coursePillClass } from "@/lib/courseColors";
-import type { Course, SmartTimerRingtone } from "@/types";
+import type { Course, SmartTimerRingtone, UserSettings } from "@/types";
 
 type Props = {
   timerVolume: number;
@@ -22,6 +22,9 @@ export function HeaderToolbar({
   const [fsOpen, setFsOpen] = useState(false);
   const [fsMode, setFsMode] = useState<"countup" | "countdown">("countup");
   const [fsCountdown, setFsCountdown] = useState(3600);
+  /** Fresh from API when overlay opens so ringtone/volume match Settings after Save. */
+  const [fsTimerVolume, setFsTimerVolume] = useState(timerVolume);
+  const [fsSmartRingtone, setFsSmartRingtone] = useState(smartTimerRingtone);
 
   const [smartOpen, setSmartOpen] = useState(false);
   const [customH, setCustomH] = useState(1);
@@ -39,6 +42,24 @@ export function HeaderToolbar({
   useEffect(() => {
     void loadCourses();
   }, [loadCourses]);
+
+  useEffect(() => {
+    setFsTimerVolume(timerVolume);
+    setFsSmartRingtone(smartTimerRingtone);
+  }, [timerVolume, smartTimerRingtone]);
+
+  useEffect(() => {
+    if (!fsOpen) return;
+    let cancelled = false;
+    void api<UserSettings>("/api/settings").then((u) => {
+      if (cancelled) return;
+      setFsTimerVolume(u.timerVolume ?? 0.45);
+      setFsSmartRingtone((u.smartTimerRingtone ?? "soft_chime") as SmartTimerRingtone);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fsOpen]);
 
   const handleSaved = async () => {
     await loadCourses();
@@ -165,8 +186,8 @@ export function HeaderToolbar({
         onClose={() => setFsOpen(false)}
         mode={fsMode}
         countdownSeconds={fsCountdown}
-        timerVolume={timerVolume}
-        smartTimerRingtone={smartTimerRingtone}
+        timerVolume={fsTimerVolume}
+        smartTimerRingtone={fsSmartRingtone}
         courses={courses}
         onSessionSaved={handleSaved}
       />

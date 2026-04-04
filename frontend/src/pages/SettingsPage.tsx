@@ -35,7 +35,7 @@ export function SettingsPage() {
     const cleanDisplayName = displayName.trim();
     const cleanEmail = email.trim();
     try {
-      await api<UserSettings>("/api/settings", {
+      const updated = await api<UserSettings>("/api/settings", {
         method: "PATCH",
         body: JSON.stringify({
           email: cleanEmail,
@@ -46,6 +46,9 @@ export function SettingsPage() {
           smartTimerRingtone,
         }),
       });
+      setS(updated);
+      setTimerVolume(updated.timerVolume ?? 0.45);
+      setSmartTimerRingtone((updated.smartTimerRingtone ?? "soft_chime") as SmartTimerRingtone);
       await reload();
       alert("Saved.");
     } catch (err) {

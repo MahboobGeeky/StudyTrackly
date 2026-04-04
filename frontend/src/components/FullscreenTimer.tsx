@@ -45,6 +45,11 @@ export function FullscreenTimer({
   const [remaining, setRemaining] = useState(countdownSeconds);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const savedRef = useRef(false);
+  /** Avoid stale interval closures so alarm always uses latest saved settings. */
+  const timerVolumeRef = useRef(timerVolume);
+  const smartTimerRingtoneRef = useRef(smartTimerRingtone);
+  timerVolumeRef.current = timerVolume;
+  smartTimerRingtoneRef.current = smartTimerRingtone;
 
   const reset = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -148,7 +153,10 @@ export function FullscreenTimer({
             if (tickRef.current) clearInterval(tickRef.current);
             tickRef.current = null;
             setRunning(false);
-            playSmartTimerRingtone(smartTimerRingtone, timerVolume);
+            playSmartTimerRingtone(
+              smartTimerRingtoneRef.current,
+              timerVolumeRef.current
+            );
             void finalizeSession(true);
             return 0;
           }
@@ -193,7 +201,7 @@ export function FullscreenTimer({
 
     // Prime WebAudio so the alarm can play at the end (autoplay policies).
     if (mode === "countdown") {
-      void primeSoftChime(timerVolume);
+      void primeSoftChime(timerVolumeRef.current);
     }
 
     savedRef.current = false;

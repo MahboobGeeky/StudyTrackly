@@ -51,7 +51,8 @@ function playToneSequence(
 
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
-  gain.gain.value = v * 0.12;
+  /** Map 0–1 UI volume to audible gain (was `v * 0.12`, which made the slider feel broken). */
+  gain.gain.value = v * 0.42;
 
   const now = ctx.currentTime;
   const lastEnd = Math.max(...tones.map((t) => t.start + t.dur), 0);

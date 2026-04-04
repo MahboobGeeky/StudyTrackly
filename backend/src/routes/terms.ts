@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { studyGoalHoursFromDaily } from "../lib/termGoal.js";
 import { withId } from "../lib/serialize.js";
+import { Course } from "../models/Course.js";
+import { DayGoalOverride } from "../models/DayGoalOverride.js";
+import { Session } from "../models/Session.js";
 import { Term } from "../models/Term.js";
 
 const router = Router();
@@ -161,12 +164,21 @@ router.post("/:id/activate", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
   try {
     const userId = (req as AuthedRequest).userId;
-    await Term.deleteOne({ _id: req.params.id, userId });
-    const remaining = await Term.countDocuments({ userId });
-    if (remaining > 0) {
-      const first = await Term.findOne({ userId }).sort({ startDate: -1 });
-      if (first) {
-        await Term.updateOne({ _id: first._id }, { isActive: true });
+    const term = await Term.findOne({ _id: req.params.id, userId }).lean();
+    if (!term) return res.status(404).json({ error: "Term not found" });
+
+    await Promise.all([
+      Session.deleteMany({ userId, termId: term._id }),
+      Course.deleteMany({ userId, termId: term._id }),
+      DayGoalOverride.deleteMany({ userId, termId: term._id }),
+      Term.deleteOne({ _id: term._id, userId }),
+    ]);
+
+    const hasActiveTerm = await Term.exists({ userId, isActive: true });
+    if (!hasActiveTerm) {
+      const fallback = await Term.findOne({ userId }).sort({ startDate: -1 }).lean();
+      if (fallback) {
+        await Term.updateOne({ _id: fallback._id }, { isActive: true });
       }
     }
     res.status(204).send();

@@ -15,6 +15,12 @@ function previewGoalHours(start: string, end: string, dailyMin: number): number 
   return Math.round(((days * dailyMin) / 60) * 100) / 100;
 }
 
+function toDateInputValue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return format(d, "yyyy-MM-dd");
+}
+
 export function TermConfigPage() {
   const { stats, reload } = useOutletContext<AppOutletContext>();
   const [terms, setTerms] = useState<
@@ -29,6 +35,15 @@ export function TermConfigPage() {
   const [silver, setSilver] = useState(0);
   const [bronze, setBronze] = useState(0);
   const [academic, setAcademic] = useState("university");
+  const [editingTermId, setEditingTermId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [editDaily, setEditDaily] = useState(720);
+
+  const editPreviewGoalHours = useMemo(
+    () => previewGoalHours(editStart, editEnd, editDaily),
+    [editStart, editEnd, editDaily]
+  );
 
   const load = useCallback(async () => {
     const list = await api<
@@ -91,6 +106,64 @@ export function TermConfigPage() {
     });
     await load();
     await reload();
+  }
+
+  async function deleteTerm(term: Term) {
+    const ok = window.confirm(
+      `Delete "${term.name}" permanently?\n\nThis will also delete all courses, sessions, and study-day goal overrides for this term.`
+    );
+    if (!ok) return;
+
+    await api(`/api/terms/${term.id}`, { method: "DELETE" });
+    if (editingTermId === term.id) {
+      setEditingTermId(null);
+    }
+    await load();
+    await reload();
+  }
+
+  function startEditDates(t: Term) {
+    setEditingTermId(t.id);
+    setEditStart(toDateInputValue(t.startDate));
+    setEditEnd(toDateInputValue(t.endDate));
+    setEditDaily(t.dailyGoalMinutes);
+  }
+
+  function cancelEditDates() {
+    setEditingTermId(null);
+  }
+
+  async function saveTermDates(termId: string) {
+    const s = new Date(`${editStart}T00:00:00`);
+    const e = new Date(`${editEnd}T23:59:59`);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
+      alert("Please choose valid start and end dates.");
+      return;
+    }
+    if (e < s) {
+      alert("End date must be on or after the start date.");
+      return;
+    }
+    const dailyGoalMinutes = Math.floor(Number(editDaily));
+    if (!Number.isFinite(dailyGoalMinutes) || dailyGoalMinutes < 1) {
+      alert("Daily goal must be at least 1 minute.");
+      return;
+    }
+    try {
+      await api(`/api/terms/${termId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          startDate: s.toISOString(),
+          endDate: e.toISOString(),
+          dailyGoalMinutes,
+        }),
+      });
+      setEditingTermId(null);
+      await load();
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update term.");
+    }
   }
 
   async function saveMedals(e: React.FormEvent) {
@@ -297,26 +370,124 @@ export function TermConfigPage() {
 
         <section>
           <h2 className="text-lg font-semibold">All terms</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Activate a term, edit dates and daily goal, or delete it. Deleting removes the term and
+            all related courses, sessions, and calendar goal overrides.
+          </p>
           <ul className="mt-3 space-y-2">
-            {terms.map((t) => (
-              <li
-                key={t.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3"
-              >
-                <span className={t.isActive ? "font-medium text-blue-300" : ""}>
-                  {t.name} {t.isActive ? "(active)" : ""}
-                </span>
-                {!t.isActive && (
-                  <button
-                    type="button"
-                    onClick={() => void activate(t.id)}
-                    className="text-sm text-blue-400 hover:underline"
-                  >
-                    Activate
-                  </button>
-                )}
-              </li>
-            ))}
+            {terms.map((t) => {
+              const isEditing = editingTermId === t.id;
+              return (
+                <li
+                  key={t.id}
+                  className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm font-medium ${t.isActive ? "text-blue-300" : "text-slate-200"}`}>
+                      {t.name} {t.isActive ? "(active)" : ""}
+                    </p>
+                    {isEditing ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div>
+                            <label className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+                              Start
+                            </label>
+                            <input
+                              type="date"
+                              className="mt-0.5 block rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm"
+                              value={editStart}
+                              onChange={(e) => setEditStart(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+                              End
+                            </label>
+                            <input
+                              type="date"
+                              className="mt-0.5 block rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm"
+                              value={editEnd}
+                              onChange={(e) => setEditEnd(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+                              Daily goal (minutes)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              className="mt-0.5 block w-28 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm"
+                              value={editDaily}
+                              onChange={(e) => {
+                                const v = e.target.valueAsNumber;
+                                if (!Number.isNaN(v)) setEditDaily(v);
+                              }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm"
+                            onClick={() => void saveTermDates(t.id)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-300"
+                            onClick={cancelEditDates}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Total term goal (computed):{" "}
+                          <span className="font-medium text-slate-300">{editPreviewGoalHours}h</span>{" "}
+                          from inclusive days × daily minutes.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {format(new Date(t.startDate), "dd/MM/yyyy")} –{" "}
+                        {format(new Date(t.endDate), "dd/MM/yyyy")}
+                        <span className="text-slate-600">
+                          {" "}
+                          · goal {t.studyGoalHours}h (from daily {t.dailyGoalMinutes} min)
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
+                    {!t.isActive && (
+                      <button
+                        type="button"
+                        onClick={() => void activate(t.id)}
+                        className="text-sm font-medium text-blue-400 hover:underline"
+                      >
+                        Activate
+                      </button>
+                    )}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => startEditDates(t)}
+                        className="text-sm font-medium text-slate-300 hover:underline"
+                      >
+                        Edit
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void deleteTerm(t)}
+                      className="text-sm font-medium text-red-400 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </section>
       </main>

@@ -13,7 +13,22 @@ const schema = z.object({
   FRONTEND_URL: z.string().url().optional().default("http://localhost:5173"),
 });
 
-const parsed = schema.parse(process.env);
+const result = schema.safeParse(process.env);
+
+if (!result.success) {
+  const details = result.error.issues
+    .map((issue) => {
+      const key = issue.path.join(".") || "unknown";
+      return `${key}: ${issue.message}`;
+    })
+    .join("; ");
+
+  throw new Error(
+    `Invalid environment configuration. Fix these env vars: ${details}`
+  );
+}
+
+const parsed = result.data;
 
 function stripTrailingSlash(u: string): string {
   return u.replace(/\/$/, "");
