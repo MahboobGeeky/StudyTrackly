@@ -79,7 +79,9 @@ function playToneSequence(
     osc.frequency.value = t.freq;
 
     const g = ctx.createGain();
-    g.gain.value = 1;
+    // Default to 0, then set to 1 exactly when the tone starts
+    g.gain.value = 0;
+    g.gain.setValueAtTime(1, now + t.start);
 
     osc.connect(g);
     g.connect(gain);
