@@ -67,7 +67,7 @@ router.get("/", async (req, res, next) => {
         ...(to ? { $lte: startOfDayTZ(to) } : {}),
       };
     }
-    const sessions = await Session.find(query).sort({ date: -1, startTime: -1 }).lean();
+    const sessions = await Session.find(query).sort({ date: -1, startTime: -1 }).limit(200).lean();
 
     const courseIds = [...new Set(sessions.map((s) => String(s.courseId)))];
     const courses = await Course.find({ userId: authed.userId, _id: { $in: courseIds } }).lean();

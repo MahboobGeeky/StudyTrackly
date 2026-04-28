@@ -49,13 +49,17 @@ export type UserSettings = {
   academicLevel: string | null;
   timerVolume?: number;
   smartTimerRingtone?: SmartTimerRingtone;
+  smartTimerRingtoneRepeat?: number;
 };
 
 export type SmartTimerRingtone =
   | "soft_chime"
   | "classic_bell"
   | "triple_ping"
-  | "alert_beep";
+  | "alert_beep"
+  | "long_chime"
+  | "digital_alarm"
+  | "zen_gong";
 
 export type StudyDayRow = {
   dateKey: string;

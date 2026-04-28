@@ -121,7 +121,7 @@ router.get("/dashboard", async (_req, res, next) => {
     let monthSessionCount = 0;
     const courseMinutes: Record<string, { name: string; color: string; minutes: number }> = {};
 
-    const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
+    const sessions = await Session.find({ userId: req.userId, termId: term._id }).select("date startTime endTime breakMinutes courseId").lean();
     const courseIds = [...new Set(sessions.map((s) => String(s.courseId)))];
     const courses = await Course.find({ userId: req.userId, _id: { $in: courseIds } }).lean();
     const courseMap = new Map(courses.map((c) => [String(c._id), c]));
@@ -241,7 +241,7 @@ router.get("/calendar-line", async (req, res, next) => {
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
     const byDay: Record<string, number> = {};
-    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
+    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).select("date startTime endTime breakMinutes").lean();
     for (const s of sessions) {
       const dt = new Date(s.date);
       if (dt < monthStart || dt > monthEnd) continue;
@@ -285,7 +285,7 @@ router.get("/weekday-radar", async (_req, res, next) => {
 
     const totals = [0, 0, 0, 0, 0, 0, 0];
     const counts = [0, 0, 0, 0, 0, 0, 0];
-    const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
+    const sessions = await Session.find({ userId: req.userId, termId: term._id }).select("date startTime endTime breakMinutes").lean();
     for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       const wd = s.date.getDay();
@@ -326,7 +326,7 @@ router.get("/study-bars", async (req, res, next) => {
     const byLabel: Record<string, number> = {};
     const now = new Date();
 
-    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
+    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).select("date startTime endTime breakMinutes").lean();
     for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       let label: string;
@@ -416,7 +416,7 @@ router.get("/daily-stacked", async (req, res, next) => {
       courseColors.set(String(c._id), c.color);
     }
 
-    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).lean();
+    const sessions = await Session.find({ userId: authed.userId, termId: term._id }).select("date startTime endTime breakMinutes courseId").lean();
     for (const s of sessions) {
       const d = new Date(s.date);
       if (d < rangeStart || d > rangeEnd) continue;
@@ -521,7 +521,7 @@ router.get("/time-buckets", async (_req, res, next) => {
     }
 
     const totals = [0, 0, 0, 0];
-    const sessions = await Session.find({ userId: req.userId, termId: term._id }).lean();
+    const sessions = await Session.find({ userId: req.userId, termId: term._id }).select("startTime endTime breakMinutes").lean();
     for (const s of sessions) {
       const m = sessionDurationMinutes(s.startTime, s.endTime, s.breakMinutes);
       const [hh] = s.startTime.split(":").map(Number);

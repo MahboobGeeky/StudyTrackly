@@ -9,12 +9,14 @@ import type { Course, SmartTimerRingtone, UserSettings } from "@/types";
 type Props = {
   timerVolume: number;
   smartTimerRingtone: SmartTimerRingtone;
+  timerRingtoneRepeat: number;
   onSessionSaved?: () => void | Promise<void>;
 };
 
 export function HeaderToolbar({
   timerVolume,
   smartTimerRingtone,
+  timerRingtoneRepeat,
   onSessionSaved,
 }: Props) {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -25,6 +27,7 @@ export function HeaderToolbar({
   /** Fresh from API when overlay opens so ringtone/volume match Settings after Save. */
   const [fsTimerVolume, setFsTimerVolume] = useState(timerVolume);
   const [fsSmartRingtone, setFsSmartRingtone] = useState(smartTimerRingtone);
+  const [fsTimerRepeat, setFsTimerRepeat] = useState(timerRingtoneRepeat);
 
   const [smartOpen, setSmartOpen] = useState(false);
   const [customH, setCustomH] = useState(1);
@@ -46,7 +49,8 @@ export function HeaderToolbar({
   useEffect(() => {
     setFsTimerVolume(timerVolume);
     setFsSmartRingtone(smartTimerRingtone);
-  }, [timerVolume, smartTimerRingtone]);
+    setFsTimerRepeat(timerRingtoneRepeat);
+  }, [timerVolume, smartTimerRingtone, timerRingtoneRepeat]);
 
   useEffect(() => {
     if (!fsOpen) return;
@@ -55,6 +59,7 @@ export function HeaderToolbar({
       if (cancelled) return;
       setFsTimerVolume(u.timerVolume ?? 0.45);
       setFsSmartRingtone((u.smartTimerRingtone ?? "soft_chime") as SmartTimerRingtone);
+      setFsTimerRepeat(u.smartTimerRingtoneRepeat ?? 1);
     });
     return () => {
       cancelled = true;
@@ -188,6 +193,7 @@ export function HeaderToolbar({
         countdownSeconds={fsCountdown}
         timerVolume={fsTimerVolume}
         smartTimerRingtone={fsSmartRingtone}
+        timerRingtoneRepeat={fsTimerRepeat}
         courses={courses}
         onSessionSaved={handleSaved}
       />

@@ -17,6 +17,7 @@ export function Header({ title, stats, breadcrumb }: Props) {
   const settings = outlet?.settings;
   const vol = settings?.timerVolume ?? 0.45;
   const smartTimerRingtone = settings?.smartTimerRingtone ?? "soft_chime";
+  const smartTimerRingtoneRepeat = settings?.smartTimerRingtoneRepeat ?? 1;
   const reloadStats = outlet?.reload;
 
   const d = new Date();
@@ -52,6 +53,7 @@ export function Header({ title, stats, breadcrumb }: Props) {
         <HeaderToolbar
           timerVolume={vol}
           smartTimerRingtone={smartTimerRingtone}
+          timerRingtoneRepeat={smartTimerRingtoneRepeat}
           onSessionSaved={reloadStats}
         />
       </div>

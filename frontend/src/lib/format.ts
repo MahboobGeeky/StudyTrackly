@@ -27,3 +27,12 @@ export function sessionDurationMinutes(
   if (diff < 0) diff += 24 * 60;
   return Math.max(0, diff - breakM);
 }
+
+export function formatTime12h(timeHHMM: string): string {
+  const [hStr, mStr] = timeHHMM.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}

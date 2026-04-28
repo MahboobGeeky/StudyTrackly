@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { Header } from "@/components/Header";
 import type { AppOutletContext } from "@/layouts/outletContext";
 import { api } from "@/lib/api";
+import { playSmartTimerRingtone } from "@/lib/chime";
 import type { SmartTimerRingtone, UserSettings } from "@/types";
 
 export function SettingsPage() {
@@ -16,6 +17,7 @@ export function SettingsPage() {
   const [smartTimerRingtone, setSmartTimerRingtone] = useState<SmartTimerRingtone>(
     "soft_chime"
   );
+  const [smartTimerRingtoneRepeat, setSmartTimerRingtoneRepeat] = useState(1);
 
   useEffect(() => {
     void api<UserSettings>("/api/settings").then((u) => {
@@ -26,6 +28,7 @@ export function SettingsPage() {
       setAcademic(u.academicLevel ?? "");
       setTimerVolume(u.timerVolume ?? 0.45);
       setSmartTimerRingtone((u.smartTimerRingtone ?? "soft_chime") as SmartTimerRingtone);
+      setSmartTimerRingtoneRepeat(u.smartTimerRingtoneRepeat ?? 1);
     });
   }, []);
 
@@ -44,11 +47,13 @@ export function SettingsPage() {
           academicLevel: academic ? academic : null,
           timerVolume,
           smartTimerRingtone,
+          smartTimerRingtoneRepeat,
         }),
       });
       setS(updated);
       setTimerVolume(updated.timerVolume ?? 0.45);
       setSmartTimerRingtone((updated.smartTimerRingtone ?? "soft_chime") as SmartTimerRingtone);
+      setSmartTimerRingtoneRepeat(updated.smartTimerRingtoneRepeat ?? 1);
       await reload();
       alert("Saved.");
     } catch (err) {
@@ -104,6 +109,8 @@ export function SettingsPage() {
               className="mt-2 w-full accent-blue-500"
               value={timerVolume}
               onChange={(e) => setTimerVolume(Number(e.target.value))}
+              onMouseUp={() => playSmartTimerRingtone(smartTimerRingtone, timerVolume, smartTimerRingtoneRepeat)}
+              onTouchEnd={() => playSmartTimerRingtone(smartTimerRingtone, timerVolume, smartTimerRingtoneRepeat)}
             />
           </div>
           <div>
@@ -111,14 +118,37 @@ export function SettingsPage() {
             <select
               className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none"
               value={smartTimerRingtone}
-              onChange={(e) =>
-                setSmartTimerRingtone(e.target.value as SmartTimerRingtone)
-              }
+              onChange={(e) => {
+                const val = e.target.value as SmartTimerRingtone;
+                setSmartTimerRingtone(val);
+                playSmartTimerRingtone(val, timerVolume, smartTimerRingtoneRepeat);
+              }}
             >
               <option value="soft_chime">Soft Chime (gentle)</option>
               <option value="classic_bell">Classic Bell</option>
               <option value="triple_ping">Triple Ping</option>
               <option value="alert_beep">Alert Beep (louder)</option>
+              <option value="long_chime">Long Chime (3s sweep)</option>
+              <option value="digital_alarm">Digital Alarm (3s repeating)</option>
+              <option value="zen_gong">Zen Gong (3s deep resonance)</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Ringtone repeats</label>
+            <select
+              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none"
+              value={smartTimerRingtoneRepeat}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setSmartTimerRingtoneRepeat(val);
+                playSmartTimerRingtone(smartTimerRingtone, timerVolume, val);
+              }}
+            >
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n} time{n > 1 ? "s" : ""}
+                </option>
+              ))}
             </select>
           </div>
           <div>

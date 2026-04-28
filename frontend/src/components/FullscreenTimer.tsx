@@ -21,6 +21,7 @@ type Props = {
   countdownSeconds: number;
   timerVolume: number;
   smartTimerRingtone: SmartTimerRingtone;
+  timerRingtoneRepeat: number;
   courses: Course[];
   onSessionSaved: () => void;
 };
@@ -32,6 +33,7 @@ export function FullscreenTimer({
   countdownSeconds,
   timerVolume,
   smartTimerRingtone,
+  timerRingtoneRepeat,
   courses,
   onSessionSaved,
 }: Props) {
@@ -48,8 +50,10 @@ export function FullscreenTimer({
   /** Avoid stale interval closures so alarm always uses latest saved settings. */
   const timerVolumeRef = useRef(timerVolume);
   const smartTimerRingtoneRef = useRef(smartTimerRingtone);
+  const timerRingtoneRepeatRef = useRef(timerRingtoneRepeat);
   timerVolumeRef.current = timerVolume;
   smartTimerRingtoneRef.current = smartTimerRingtone;
+  timerRingtoneRepeatRef.current = timerRingtoneRepeat;
 
   const reset = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -148,20 +152,29 @@ export function FullscreenTimer({
         const net = gross - breakMsRef.current - pauseExtra;
         setDisplaySeconds(Math.max(0, Math.floor(net / 1000)));
       } else {
-        setRemaining((r) => {
-          if (r <= 1) {
-            if (tickRef.current) clearInterval(tickRef.current);
-            tickRef.current = null;
-            setRunning(false);
-            playSmartTimerRingtone(
-              smartTimerRingtoneRef.current,
-              timerVolumeRef.current
-            );
-            void finalizeSession(true);
-            return 0;
-          }
-          return r - 1;
-        });
+        if (!sessionStartRef.current) return;
+        const now = Date.now();
+        const gross = now - sessionStartRef.current.getTime();
+        let pauseExtra = 0;
+        if (pauseStartedRef.current) pauseExtra = now - pauseStartedRef.current.getTime();
+        const net = gross - breakMsRef.current - pauseExtra;
+        const elapsedSeconds = Math.floor(net / 1000);
+        const newRemaining = Math.max(0, countdownSeconds - elapsedSeconds);
+
+        if (newRemaining <= 0) {
+          if (tickRef.current) clearInterval(tickRef.current);
+          tickRef.current = null;
+          setRunning(false);
+          setRemaining(0);
+          playSmartTimerRingtone(
+            smartTimerRingtoneRef.current,
+            timerVolumeRef.current,
+            timerRingtoneRepeatRef.current
+          );
+          void finalizeSession(true);
+        } else {
+          setRemaining(newRemaining);
+        }
       }
     }, 1000);
 

@@ -7,6 +7,7 @@ export type UserDoc = {
   googleId?: string;
   timerVolume: number;
   smartTimerRingtone: string;
+  smartTimerRingtoneRepeat: number;
   trialEnd: Date | null;
   academicLevel: string | null;
   createdAt: Date;
@@ -25,6 +26,7 @@ const userSchema = new Schema<UserDoc>(
       required: true,
       default: "soft_chime",
     },
+    smartTimerRingtoneRepeat: { type: Number, required: true, default: 1 },
     trialEnd: { type: Date, required: false, default: null },
     academicLevel: { type: String, required: false, default: null },
   },

@@ -4,7 +4,7 @@ import { Header } from "@/components/Header";
 import type { AppOutletContext } from "@/layouts/outletContext";
 import { api } from "@/lib/api";
 import { coursePillClass } from "@/lib/courseColors";
-import { formatMinutes, sessionDurationMinutes } from "@/lib/format";
+import { formatMinutes, sessionDurationMinutes, formatTime12h } from "@/lib/format";
 import type { Course, SessionRow, Term } from "@/types";
 import { format } from "date-fns";
 
@@ -22,6 +22,18 @@ export function SessionsPage() {
   const [activity, setActivity] = useState("");
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
+
+  function setCurrentTimeFor(field: "start" | "end") {
+    const now = new Date();
+    const str = now.toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Kolkata",
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    if (field === "start") setStart(str);
+    else setEnd(str);
+  }
 
   const load = useCallback(async () => {
     const t = await api<Term | null>("/api/terms/active");
@@ -104,16 +116,24 @@ export function SessionsPage() {
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="text-xs text-slate-500">Start</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-slate-500">Start</label>
+                <button type="button" onClick={() => setCurrentTimeFor('start')} className="text-[10px] text-blue-400">Now</button>
+              </div>
               <input
+                type="time"
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">End</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-slate-500">End</label>
+                <button type="button" onClick={() => setCurrentTimeFor('end')} className="text-[10px] text-blue-400">Now</button>
+              </div>
               <input
+                type="time"
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
@@ -211,7 +231,7 @@ export function SessionsPage() {
                         {format(new Date(s.date), "dd/MM/yy")}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-slate-300">
-                        {s.startTime} – {s.endTime}
+                        {formatTime12h(s.startTime)} – {formatTime12h(s.endTime)}
                       </td>
                       <td className="px-3 py-2">{formatMinutes(mins)}</td>
                       <td className="px-3 py-2">

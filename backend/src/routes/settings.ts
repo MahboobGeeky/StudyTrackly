@@ -5,7 +5,15 @@ import { User } from "../models/User.js";
 
 const router = Router();
 
-const smartTimerRingtoneValues = ["soft_chime", "classic_bell", "triple_ping", "alert_beep"] as const;
+const smartTimerRingtoneValues = [
+  "soft_chime",
+  "classic_bell",
+  "triple_ping",
+  "alert_beep",
+  "long_chime",
+  "digital_alarm",
+  "zen_gong",
+] as const;
 
 const body = z.object({
   // Accept both legacy `name` and frontend `displayName`.
@@ -16,6 +24,7 @@ const body = z.object({
   academicLevel: z.string().min(1).nullable().optional(),
   timerVolume: z.number().min(0).max(1).optional(),
   smartTimerRingtone: z.enum(smartTimerRingtoneValues).optional(),
+  smartTimerRingtoneRepeat: z.number().min(1).max(5).optional(),
 });
 
 router.get("/", async (_req, res, next) => {
@@ -30,6 +39,7 @@ router.get("/", async (_req, res, next) => {
       email: user.email,
       timerVolume: user.timerVolume ?? 0.45,
       smartTimerRingtone: user.smartTimerRingtone ?? "soft_chime",
+      smartTimerRingtoneRepeat: user.smartTimerRingtoneRepeat ?? 1,
       trialEnd: user.trialEnd ? user.trialEnd.toISOString() : null,
       academicLevel: user.academicLevel ?? null,
     });
@@ -52,6 +62,9 @@ router.patch("/", async (req, res, next) => {
         ...(data.smartTimerRingtone !== undefined && {
           smartTimerRingtone: data.smartTimerRingtone,
         }),
+        ...(data.smartTimerRingtoneRepeat !== undefined && {
+          smartTimerRingtoneRepeat: data.smartTimerRingtoneRepeat,
+        }),
         ...(data.trialEnd !== undefined && {
           trialEnd: data.trialEnd ? new Date(data.trialEnd) : null,
         }),
@@ -69,6 +82,7 @@ router.patch("/", async (req, res, next) => {
       email: user.email,
       timerVolume: user.timerVolume ?? 0.45,
       smartTimerRingtone: user.smartTimerRingtone ?? "soft_chime",
+      smartTimerRingtoneRepeat: user.smartTimerRingtoneRepeat ?? 1,
       trialEnd: user.trialEnd ? user.trialEnd.toISOString() : null,
       academicLevel: user.academicLevel ?? null,
     });
