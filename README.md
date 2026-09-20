@@ -1,51 +1,111 @@
-# StudyTrackly — Study Tracker (Full Stack)
+# StudyTrackly
 
-A study tracker inspired by modern study dashboards: dashboards, sessions, courses, terms, calendar views, and charts. **All data is stored in MongoDB Atlas** and scoped per user using **JWT authentication**. The **React + Vite + Tailwind** frontend talks to a **Node.js + Express + MongoDB** API.
+StudyTrackly is a full-stack study tracker for students. You sign in with Google, log study sessions against courses and academic terms, and see progress on a dashboard, calendar, and trophies page.
+
+Your data lives in **MongoDB** (via Mongoose) and is private to your account. A **React** web app talks to a **Node.js + Express** API using a **JWT** after Google sign-in.
+
+## Purpose
+
+The goal is to make daily study visible and motivating:
+
+- Record when you studied, for which course, and for how long
+- Set a term (semester) with a daily time goal
+- See totals, streaks, and charts instead of guessing how much work you have done
+- Keep useful links (notes, Drive folders) in a Data Room
+- Use a built-in SmartTimer for focus, then save the session
+
+## Major features
+
+| Area | What you can do |
+| --- | --- |
+| **Sign in** | Continue with Google. The first visit creates your account. |
+| **Term Config** | Create terms, set start/end dates and a daily goal, activate one term, edit medal counts. |
+| **Courses** | Add, edit, and remove subjects (with a color tag) for the active term. |
+| **Sessions** | Log date, start/end time, break minutes, course, activity, and note. List and delete sessions. |
+| **Dashboard** | Totals, streak, course breakdown, weekday and time-of-day charts. |
+| **Calendar** | Recent-day bars, study-day table (duration, goal, gap, running “share price”), day detail, adjust a day’s goal. |
+| **Data Room** | Save resource links (name, URL, note) for the active term. |
+| **Trophies** | Medals and streak based on days you hit the daily goal. |
+| **Settings** | Display name, email, timer volume, ringtone, academic level. |
+| **SmartTimer** | Stopwatch or countdown from the header; optional fullscreen; ringtones are generated in the browser (no MP3 files). |
+
+## Technologies
+
+| Layer | What we use | Why |
+| --- | --- | --- |
+| **Frontend** | React 19, Vite 6, Tailwind CSS 4 | Fast UI, dark dashboard layout |
+| **Routing** | React Router 7 | Pages like `/dashboard`, `/sessions`, `/signin` |
+| **Charts** | Recharts | Bars, stacked hours, radar-style summaries |
+| **HTTP** | Axios | Calls `/api/...` with the JWT |
+| **Backend** | Node.js (JavaScript ESM), Express | REST API |
+| **Database** | MongoDB Atlas + Mongoose | Users, terms, courses, sessions, goals, links |
+| **Auth** | Google OAuth 2.0 + JWT | Sign in with Google; later requests send `Authorization: Bearer <token>` |
+| **Validation** | Zod | Checks env vars and request bodies |
+| **Cache (optional)** | Redis via ioredis | Speeds up stats; app still works if Redis is off |
+
+There is **no Prisma** and **no SQLite**. MongoDB + Mongoose is the only database.
+
+## How the pieces fit together (simple architecture)
+
+```
+Browser (React app, port 5173)
+    │  1. Click “Continue with Google”
+    ▼
+Express API (port 4000)
+    │  2. Redirects to Google, then Google comes back to /api/auth/google/callback
+    │  3. API finds or creates a User in MongoDB and issues a JWT
+    ▼
+Browser stores the JWT and user in localStorage
+    │  4. Every later request: Authorization: Bearer <token>
+    ▼
+API middleware checks the JWT → attaches your user id
+    │  5. Routes read/write MongoDB (and optionally Redis for stats)
+    ▼
+JSON back to the React pages (dashboard, sessions, calendar, …)
+```
+
+In local development, Vite **proxies** `/api` to `http://localhost:4000`, so the app can call `/api/...` without a separate frontend URL. Google’s callback still hits the backend URL in `GOOGLE_CALLBACK_URL` (usually `http://localhost:4000/api/auth/google/callback`).
 
 ## Project layout
 
 ```
-athenify-clone/
-├── backend/          # Express API + MongoDB Atlas + JWT
-├── frontend/         # React + Vite + Tailwind + Recharts
-├── README.md
-└── athenify-clone-fullstack.zip   # optional archive (no node_modules/dist); run npm install in each folder
+StudyTrakcly/
+├── backend/                 # Express API
+│   ├── src/
+│   │   ├── index.js         # Starts the server, mounts routes
+│   │   ├── lib/             # DB, Redis, dates, cache, env
+│   │   ├── middleware/      # JWT auth, errors
+│   │   ├── models/          # Mongoose schemas
+│   │   └── routes/          # REST endpoints
+│   ├── .env.example
+│   └── package.json
+├── frontend/                # React + Vite app
+│   ├── src/
+│   │   ├── pages/           # Dashboard, Sessions, Calendar, …
+│   │   ├── components/      # Sidebar, Header, SmartTimer, charts
+│   │   ├── layouts/         # Shell around logged-in pages
+│   │   └── lib/             # api, auth, chime, formatting
+│   └── package.json
+├── README.md                # This file
+└── PROJECT_DETAILS.md       # Architecture in more depth
 ```
-
-A ready-made archive `**athenify-clone-fullstack.zip**` in this folder contains the same `frontend` and `backend` trees (without `node_modules` or `dist` to keep the file small). Unzip, then follow **Quick start** in each subfolder.
 
 ## Prerequisites
 
-- **Node.js** 20+ (includes `npm`)
-- **npm** 10+
-- A **MongoDB Atlas** connection string (or any MongoDB URI)
+- **Node.js** 20+ (includes npm)
+- A **MongoDB** connection string (Atlas or local)
+- **Google Cloud** OAuth client (Web application) for sign-in
+- **Redis** is optional (`REDIS_URL`); leave empty to skip caching
 
-## Setup & run (VS Code)
+## Setup and run
 
-### 1) Open project
+### 1. Backend environment
 
-- VS Code → **File → Open Folder…** → select `athenify-clone`
-
-### 2) Backend env
-
-Create `backend/.env` (see `backend/.env.example`). You need **MongoDB**, **JWT**, and **Google OAuth** credentials.
-
-**Google Cloud Console** (one-time):
-
-1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**.
-2. **Authorized redirect URIs**: add exactly
-  `http://localhost:4000/api/auth/google/callback`  
-   For production, add your deployed API callback URL the same way (e.g. `https://api.yourdomain.com/api/auth/google/callback`).
-3. Copy **Client ID** and **Client secret** into `backend/.env` (same pair from the **Web application** client — not Android/iOS/Desktop).
-4. **OAuth consent screen**: configure it once (APIs & Services → OAuth consent screen). If the app is in **Testing**, add your Google account under **Test users**.
-
-**If you see `invalid_client` or “OAuth client was not found”:** the Client ID or Client secret in `.env` does not match Google Cloud, or the credential type is not **Web application**. Remove stray spaces; restart the backend after editing `.env`. The **Authorized redirect URI** must match `GOOGLE_CALLBACK_URL` exactly (no trailing slash unless you registered it that way).
-
-**If you see `redirect_uri_mismatch` (Error 400):** Google’s list of **Authorized redirect URIs** does not include the exact URL your API sends. On backend startup, the console prints: `Google OAuth redirect URI (must match Google Cloud exactly): …` — copy that string into Google Cloud → **Credentials** → your **Web client** → **Authorized redirect URIs** → Save. Use `http://localhost:4000/...` vs `http://127.0.0.1:4000/...` consistently (they count as different). Do not rely on “Authorized JavaScript origins” alone; you must add the **redirect URI** list entry.
+Copy `backend/.env.example` to `backend/.env` and fill in at least:
 
 ```bash
-MONGO_URI="your-mongodb-atlas-uri"
-JWT_SECRET="your-very-long-random-secret"
+MONGO_URI="your-mongodb-uri"
+JWT_SECRET="a-long-random-secret"
 JWT_EXPIRES_IN="7d"
 PORT=4000
 
@@ -54,11 +114,16 @@ GOOGLE_CLIENT_SECRET="..."
 GOOGLE_CALLBACK_URL="http://localhost:4000/api/auth/google/callback"
 FRONTEND_URL="http://localhost:5173"
 
-# Optional for deployment (comma-separated):
-# CORS_ORIGIN="http://localhost:5173,https://your-frontend-domain.com"
+# Optional
+# CORS_ORIGIN="http://localhost:5173"
+# REDIS_URL="redis://127.0.0.1:6379"
 ```
 
-### 3) Start backend (Terminal 1)
+**Google Cloud (once):** Credentials → OAuth client ID → **Web application**. Add **Authorized redirect URIs** exactly matching `GOOGLE_CALLBACK_URL` (localhost and 127.0.0.1 are different). If the app is in Testing, add your Google account as a test user.
+
+On startup the API prints the redirect URI it will send to Google. Copy that string into Google Cloud if you see `redirect_uri_mismatch`.
+
+### 2. Start the API (terminal 1)
 
 ```bash
 cd backend
@@ -66,10 +131,10 @@ npm install
 npm run dev
 ```
 
-API: `http://localhost:4000`  
-Health check: `curl http://localhost:4000/api/health`
+- API: [http://localhost:4000](http://localhost:4000)
+- Health: `curl http://localhost:4000/api/health`
 
-### 4) Start frontend (Terminal 2)
+### 3. Start the web app (terminal 2)
 
 ```bash
 cd frontend
@@ -77,131 +142,51 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`
+Open [http://localhost:5173](http://localhost:5173), go to **Sign in**, and choose **Continue with Google**.
 
-### 5) Sign in with Google
+## Production
 
-- Open `http://localhost:5173/signin` and choose **Continue with Google**.
-- The first sign-in creates your account; later sign-ins use the same Google account and the same data in MongoDB.
-
-## Quick start (CLI)
-
-### 1. Backend (MongoDB + JWT)
+**API** (JavaScript source, no compile step):
 
 ```bash
 cd backend
-npm install
-npm run dev
-```
-
-The API listens on **[http://localhost:4000](http://localhost:4000)**. Health check: `curl http://localhost:4000/api/health`
-Configure `backend/.env` before running (see above).
-
-### 2. Frontend (new terminal)
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open **[http://localhost:5173](http://localhost:5173)**. The Vite dev server **proxies** `/api` to `http://localhost:4000`, so the “Continue with Google” link can use a relative `/api/auth/google` URL in development. **Google’s redirect** always hits the backend directly on port **4000** (`GOOGLE_CALLBACK_URL`), so that URI must match what you configured in Google Cloud Console.
-
-### 3. Auth
-
-- Sign in: `http://localhost:5173/signin` (Google OAuth). `/signup` redirects to `/signin`.
-
-## Production build
-
-**Backend**
-
-```bash
-cd backend
-npm run build
 npm start
 ```
 
-**Frontend**
+**Web app:**
 
 ```bash
 cd frontend
 npm run build
 ```
 
-Serve the `frontend/dist` folder with any static host. Set `**VITE_API_URL**` to your API origin if the frontend and API are on different hosts, for example:
+Serve `frontend/dist`. If the UI and API are on different hosts, build with `VITE_API_URL` set to the API origin. If one domain proxies `/api` to the backend, you can leave `VITE_API_URL` unset.
 
-```bash
-VITE_API_URL=https://api.example.com npm run build
-```
+Also set production `GOOGLE_CALLBACK_URL`, `FRONTEND_URL`, and `CORS_ORIGIN` as needed.
 
-If the same origin serves both (e.g. reverse proxy), you can leave `VITE_API_URL` unset and proxy `/api` to the backend.
+## API overview
 
-## Deployment Checklist
-1. **Backend secrets**
-   - Create `backend/.env` from `backend/.env.example`
-   - Set `MONGO_URI`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FRONTEND_URL`, and `GOOGLE_CALLBACK_URL`
-   - If you ever committed real secrets to git, rotate them immediately (Google OAuth + Mongo credentials)
-2. **Google OAuth**
-   - In Google Cloud Console, add your exact redirect URI(s):
-     - production: `https://<your-api-domain>/api/auth/google/callback`
-     - development: `http://localhost:4000/api/auth/google/callback`
-   - Reload/restart the backend after updating `backend/.env`
-3. **CORS**
-   - If frontend and backend are on different domains, set `CORS_ORIGIN` (comma-separated) in `backend/.env`
-4. **Frontend API URL**
-   - If frontend and backend are on different hosts, set `VITE_API_URL=https://<your-api-domain>` while building the frontend
-   - If you use a reverse proxy under the same domain, proxy `/api` to the backend and leave `VITE_API_URL` unset
-5. **Build + start**
-   - Backend: `npm run build` then `npm start`
-   - Frontend: `npm run build` then serve `frontend/dist` with a static host
+Except `/api/health` and `/api/auth/*`, send:
 
-### Production Smoke Tests
-- `GET /api/health` returns `{ "ok": true }` without auth
-- Browser: open `/signin`, complete Google sign-in, verify the dashboard loads
-- Browser: open SmartTimer, start a countdown, confirm the selected ringtone plays when time ends
-- Browser: open Calendar and confirm the Study days table renders correctly
-
-## Features (student workflow)
-
-
-| Area            | What you can do                                                                                     |
-| --------------- | --------------------------------------------------------------------------------------------------- |
-| **Term Config** | Create terms, set goals, activate a term, edit gold/silver/bronze counts, calendar feed placeholder |
-| **Courses**     | Add/remove courses (color tags for UI) for the active term                                          |
-| **Sessions**    | Create sessions (date, time, break, course, activity, note); list and delete                        |
-| **Dashboard**   | Study totals, streak, course chart, weekday bars, pace summary                                      |
-| **Calendar**    | Bar chart of recent days + table + day detail                                                       |
-| **Data Room**   | Add/remove resource links (name, URL, note)                                                         |
-| **Trophies**    | View medals and streak                                                                              |
-| **Settings**    | Email, display name, trial date, academic level                                                     |
-
-
-## API overview (REST)
-
-- `GET /api/auth/google` — redirect to Google; then `GET /api/auth/google/callback` issues JWT and redirects the browser to `FRONTEND_URL/auth/callback#token=…&user=…`
-- `GET/POST/PATCH/DELETE /api/terms` — terms; `GET /api/terms/active`; `POST /api/terms/:id/activate`
-- `GET/POST/PATCH/DELETE /api/courses?termId=`
-- `GET/POST/PATCH/DELETE /api/sessions?termId=`
-- `GET /api/study-days?termId=` (calendar table rows with duration, goal, gap, share price, progress)
-- `POST /api/study-days/adjust-goal` (adjust goal by +/- minutes)
-- `GET/PATCH /api/settings` (profile + timer volume)
-- `GET /api/stats/dashboard`
-- `GET /api/stats/weekday-radar` (radar: weekdays)
-- `GET /api/stats/time-buckets` (radar: time of day)
-- `GET /api/stats/daily-stacked` (stacked bars: total study hours per day, by course)
-
-All routes except `/api/health` and `/api/auth/`* require:
 `Authorization: Bearer <token>`
 
-## Tech stack
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | Liveness; shows if Redis is on |
+| GET | `/api/auth/google` | Start Google sign-in |
+| GET | `/api/auth/google/callback` | Finish sign-in, redirect to the app with a token |
+| GET/POST/PATCH/DELETE | `/api/terms` | Terms; also `/active` and `/:id/activate` |
+| GET/POST/PATCH/DELETE | `/api/courses` | Courses (`?termId=`) |
+| GET/POST/PATCH/DELETE | `/api/sessions` | Study sessions |
+| GET | `/api/study-days` | Calendar rows (duration, goal, gap, share price) |
+| POST | `/api/study-days/adjust-goal` | Change one day’s goal by minutes |
+| GET/PATCH | `/api/settings` | Profile and timer preferences |
+| GET | `/api/stats/dashboard` | Dashboard totals and streak |
+| GET | `/api/stats/weekday-radar` | Hours by weekday |
+| GET | `/api/stats/time-buckets` | Hours by time of day |
+| GET | `/api/stats/daily-stacked` | Hours per day by course |
+| GET/POST/DELETE | `/api/data-room` | Resource links |
 
+## More detail
 
-| Layer    | Stack                                                                              |
-| -------- | ---------------------------------------------------------------------------------- |
-| Frontend | React 19, Vite 6, Tailwind CSS 4, React Router 7, Recharts, Lucide React, date-fns |
-| Backend  | Express, MongoDB Atlas (Mongoose), JWT, bcrypt, Zod                                |
-
-
-## Legal
-
-This is an **educational clone** for learning full-stack patterns. It is **not** affiliated with or endorsed by any third-party app.
+See [PROJECT_DETAILS.md](PROJECT_DETAILS.md) for a beginner-friendly walkthrough of architecture, data models, auth, caching, and charts.

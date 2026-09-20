@@ -1,0 +1,267 @@
+import { Router } from "express";
+import { z } from "zod";
+import { studyGoalHoursFromDaily } from "../lib/termGoal.js";
+import { withId } from "../lib/serialize.js";
+import { Course } from "../models/Course.js";
+import { DataRoomFile } from "../models/DataRoomFile.js";
+import { DayGoalOverride } from "../models/DayGoalOverride.js";
+import { Session } from "../models/Session.js";
+import { Term } from "../models/Term.js";
+import {
+  cacheGet,
+  cacheKey,
+  cacheSet,
+  invalidateAllUserCache,
+} from "../lib/cache.js";
+import { startOfDayTZ, endOfDayTZ } from "../lib/date-utils.js";
+
+const router = Router();
+
+/** Terms cached for 30 s */
+const TERMS_TTL = 30;
+
+const termBody = z.object({
+  name: z.string().min(1),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  dailyGoalMinutes: z.number().int().min(1),
+  /** If omitted, computed as: inclusive days × dailyGoalMinutes / 60 */
+  studyGoalHours: z.number().positive().optional(),
+  goldMedals: z.number().int().min(0).optional(),
+  silverMedals: z.number().int().min(0).optional(),
+  bronzeMedals: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+
+/**
+ * Treat the first `YYYY-MM-DD` in each ISO string as the calendar day in Asia/Kolkata
+ */
+function parseTermDates(startRaw, endRaw) {
+  let startDate;
+  let endDate;
+
+  const sMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(startRaw.trim());
+  if (sMatch) {
+    startDate = startOfDayTZ(startRaw.trim().slice(0, 10));
+  } else {
+    startDate = startOfDayTZ(new Date(startRaw.trim()));
+  }
+
+  const eMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(endRaw.trim());
+  if (eMatch) {
+    endDate = endOfDayTZ(endRaw.trim().slice(0, 10));
+  } else {
+    endDate = endOfDayTZ(new Date(endRaw.trim()));
+  }
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Invalid start or end date");
+  }
+
+  if (endDate.getTime() < startDate.getTime()) {
+    throw new Error("End date must be on or after start date");
+  }
+
+  return { startDate, endDate };
+}
+
+// ─── GET /terms ───────────────────────────────────────────────────────────────
+
+router.get("/", async (req, res, next) => {
+  try {
+    const key = cacheKey(req.userId, "terms", "list");
+    const cached = await cacheGet(key);
+    if (cached) return res.json(cached);
+
+    const terms = await Term.find({ userId: req.userId }).sort({ startDate: -1 }).lean();
+    const result = terms.map((t) => withId(t));
+
+    await cacheSet(key, result, TERMS_TTL);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ─── GET /terms/active ────────────────────────────────────────────────────────
+
+router.get("/active", async (req, res, next) => {
+  try {
+    const key = cacheKey(req.userId, "terms", "active");
+    const cached = await cacheGet(key);
+    // null is a valid cached value (no active term), differentiate from cache miss
+    if (cached !== null) return res.json(cached);
+
+    const term = await Term.findOne({ userId: req.userId, isActive: true }).lean();
+    const result = term ? withId(term) : null;
+
+    // Only cache a positive result to avoid caching a cold-start null
+    if (result !== null) {
+      await cacheSet(key, result, TERMS_TTL);
+    }
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ─── POST /terms ──────────────────────────────────────────────────────────────
+
+router.post("/", async (req, res, next) => {
+  try {
+    const data = termBody.parse(req.body);
+    const { startDate, endDate } = parseTermDates(data.startDate, data.endDate);
+    const studyGoalHours =
+      data.studyGoalHours ?? studyGoalHoursFromDaily(startDate, endDate, data.dailyGoalMinutes);
+
+    const userId = req.userId;
+
+    if (data.isActive !== false) {
+      await Term.updateMany({ userId }, { isActive: false });
+    }
+    const term = await Term.create({
+      userId,
+      name: data.name,
+      startDate,
+      endDate,
+      studyGoalHours,
+      dailyGoalMinutes: data.dailyGoalMinutes,
+      goldMedals: data.goldMedals ?? 0,
+      silverMedals: data.silverMedals ?? 0,
+      bronzeMedals: data.bronzeMedals ?? 0,
+      isActive: data.isActive ?? true,
+      examCount: 0,
+    });
+
+    // New term becomes active → wipe everything for this user
+    await invalidateAllUserCache(userId);
+
+    res.status(201).json(withId(term.toObject()));
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("date")) {
+      return res.status(400).json({ error: e.message });
+    }
+    next(e);
+  }
+});
+
+// ─── PATCH /terms/:id ─────────────────────────────────────────────────────────
+
+router.patch("/:id", async (req, res, next) => {
+  try {
+    const data = termBody.partial().parse(req.body);
+    const userId = req.userId;
+
+    const existing = await Term.findOne({ _id: req.params.id, userId }).lean();
+    if (!existing) return res.status(404).json({ error: "Term not found" });
+
+    let startDate = existing.startDate;
+    let endDate = existing.endDate;
+    let dailyGoalMinutes = existing.dailyGoalMinutes;
+
+    if (data.startDate != null || data.endDate != null) {
+      const s = data.startDate ?? existing.startDate.toISOString();
+      const e = data.endDate ?? existing.endDate.toISOString();
+      const parsed = parseTermDates(s, e);
+      startDate = parsed.startDate;
+      endDate = parsed.endDate;
+    }
+    if (data.dailyGoalMinutes != null) dailyGoalMinutes = data.dailyGoalMinutes;
+
+    const datesOrDailyChanged =
+      data.startDate != null || data.endDate != null || data.dailyGoalMinutes != null;
+    let studyGoalHours = existing.studyGoalHours;
+    if (data.studyGoalHours != null) {
+      studyGoalHours = data.studyGoalHours;
+    } else if (datesOrDailyChanged) {
+      studyGoalHours = studyGoalHoursFromDaily(startDate, endDate, dailyGoalMinutes);
+    }
+
+    if (data.isActive === true) {
+      await Term.updateMany({ userId }, { isActive: false });
+    }
+
+    const term = await Term.findOneAndUpdate(
+      { _id: req.params.id, userId },
+      {
+        ...(data.name && { name: data.name }),
+        ...(data.startDate != null || data.endDate != null ? { startDate, endDate } : {}),
+        ...(data.dailyGoalMinutes != null && { dailyGoalMinutes: data.dailyGoalMinutes }),
+        studyGoalHours,
+        ...(data.goldMedals != null && { goldMedals: data.goldMedals }),
+        ...(data.silverMedals != null && { silverMedals: data.silverMedals }),
+        ...(data.bronzeMedals != null && { bronzeMedals: data.bronzeMedals }),
+        ...(data.isActive != null && { isActive: data.isActive }),
+      },
+      { new: true }
+    ).lean();
+    if (!term) return res.status(404).json({ error: "Term not found" });
+
+    // Term change → wipe all user cache since active term affects every stat query
+    await invalidateAllUserCache(userId);
+
+    res.json(withId(term));
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("date")) {
+      return res.status(400).json({ error: e.message });
+    }
+    next(e);
+  }
+});
+
+// ─── POST /terms/:id/activate ─────────────────────────────────────────────────
+
+router.post("/:id/activate", async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    await Term.updateMany({ userId }, { isActive: false });
+    const term = await Term.findOneAndUpdate(
+      { _id: req.params.id, userId },
+      { isActive: true },
+      { new: true }
+    ).lean();
+    if (!term) return res.status(404).json({ error: "Term not found" });
+
+    // Switching active term → wipe everything
+    await invalidateAllUserCache(userId);
+
+    res.json(withId(term));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ─── DELETE /terms/:id ────────────────────────────────────────────────────────
+
+router.delete("/:id", async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const term = await Term.findOne({ _id: req.params.id, userId }).lean();
+    if (!term) return res.status(404).json({ error: "Term not found" });
+
+    await Promise.all([
+      Session.deleteMany({ userId, termId: term._id }),
+      Course.deleteMany({ userId, termId: term._id }),
+      DayGoalOverride.deleteMany({ userId, termId: term._id }),
+      DataRoomFile.deleteMany({ userId, termId: term._id }),
+      Term.deleteOne({ _id: term._id, userId }),
+    ]);
+
+    const hasActiveTerm = await Term.exists({ userId, isActive: true });
+    if (!hasActiveTerm) {
+      const fallback = await Term.findOne({ userId }).sort({ startDate: -1 }).lean();
+      if (fallback) {
+        await Term.updateOne({ _id: fallback._id }, { isActive: true });
+      }
+    }
+
+    // Term deleted → wipe full user cache
+    await invalidateAllUserCache(userId);
+
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
+export default router;
