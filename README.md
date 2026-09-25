@@ -1,4 +1,5 @@
 # StudyTrackly
+### 🚀 Deployed Application: https://study-trackly.vercel.app
 
 StudyTrackly is a full-stack study tracker for students. You sign in with Google, log study sessions against courses and academic terms, and see progress on a dashboard, calendar, and trophies page.
 
