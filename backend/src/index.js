@@ -18,22 +18,24 @@ import termsRouter from "./routes/terms.js";
 const app = express();
 const PORT = env.PORT;
 
-// app.use(
-//   cors({
-//     origin: env.CORS_ORIGIN ? env.CORS_ORIGIN.split(",") : true,
-//     credentials: true,
-//   })
-// );
-
-app.use(cors({
-  origin: env.CORS_ORIGIN,
-  credentials: true,
-}))
+app.use(
+  cors({
+    origin: env.CORS_ORIGIN ? env.CORS_ORIGIN.split(",") : true,
+    credentials: true,
+  })
+);
+// app.use(cors({
+//   origin: env.CORS_ORIGIN,
+//   credentials: true,
+// }))
 
 app.use(express.json());
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, cache: getRedis() !== null ? "redis" : "disabled" });
+app.get("/api/health", (req_, res) => { // '_req' means this para is unused
+  return res.json({
+    status: true,
+    cache: getRedis() !== null ? "redis" : "disabled"
+  });
 });
 
 app.use("/api/auth", authRouter);
