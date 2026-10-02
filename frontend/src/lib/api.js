@@ -10,7 +10,11 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("studytrackly_token");
-  if (token) {
+  const hasAuthorization = config.headers &&
+    (typeof config.headers.get === "function"
+      ? config.headers.get("Authorization")
+      : config.headers.Authorization ?? config.headers.authorization);
+  if (token && !hasAuthorization) {
     if (config.headers && typeof config.headers.set === "function") {
       config.headers.set("Authorization", `Bearer ${token}`);
     } else {

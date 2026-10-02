@@ -63,6 +63,7 @@ connectDb()
           `[auth] Google OAuth redirect URI (must match Google Cloud exactly): ${env.GOOGLE_CALLBACK_URL}`
         );
       }
+      
     });
   })
   .catch((e) => {

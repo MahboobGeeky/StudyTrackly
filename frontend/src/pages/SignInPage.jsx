@@ -1,7 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { getGoogleAuthUrl } from "@/lib/auth";
 
-const errorMessages = {
+const errorMessages = { // code , msg 
   oauth_not_configured:
     "Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to backend/.env (see README), then restart the API.",
   invalid_client:
@@ -23,7 +23,7 @@ export function SignInPage() {
   const [params] = useSearchParams();
   const code = params.get("error");
   const err =
-    code && (errorMessages[code] ?? decodeURIComponent(code.replace(/\+/g, " ")));
+    code && (errorMessages[code] ?? decodeURIComponent(code.replace(/\+/g, " "))); // backend gives this 
 
   const googleHref = getGoogleAuthUrl();
 

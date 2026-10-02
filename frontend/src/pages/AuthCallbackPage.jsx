@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { setAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { clearAuth, setAuth } from "@/lib/auth";
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -13,19 +14,26 @@ export function AuthCallbackPage() {
     }
     const params = new URLSearchParams(hash);
     const token = params.get("token");
-    const userRaw = params.get("user");
-    if (!token || !userRaw) {
+    if (!token) {
       navigate("/signin?error=missing_token", { replace: true });
       return;
     }
-    try {
-      const user = JSON.parse(userRaw);
-      setAuth(token, user);
-      window.history.replaceState(null, "", window.location.pathname);
-      queueMicrotask(() => navigate("/dashboard", { replace: true }));
-    } catch {
-      navigate("/signin?error=invalid_callback", { replace: true });
+
+    async function completeSignIn() {
+      try {
+        const user = await api("/api/settings", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setAuth(token, user);
+        window.history.replaceState(null, "", window.location.pathname);
+        navigate("/dashboard", { replace: true });
+      } catch {
+        clearAuth();
+        navigate("/signin?error=invalid_callback", { replace: true });
+      }
     }
+
+    void completeSignIn();
   }, [navigate]);
 
   return (
