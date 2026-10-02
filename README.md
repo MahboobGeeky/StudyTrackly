@@ -3,7 +3,7 @@
 
 StudyTrackly is a full-stack study tracker for students. You sign in with Google, log study sessions against courses and academic terms, and see progress on a dashboard, calendar, and trophies page.
 
-Your data lives in **MongoDB** (via Mongoose) and is private to your account. A **React** web app talks to a **Node.js + Express** API using a **JWT** after Google sign-in.
+Data lives in **MongoDB** (via Mongoose) and is private to our account. A **React** web app talks to a **Node.js + Express** API using a **JWT** after Google sign-in.
 
 ## Purpose
 
@@ -191,3 +191,10 @@ Except `/api/health` and `/api/auth/*`, send:
 ## More detail
 
 See [PROJECT_DETAILS.md](PROJECT_DETAILS.md) for a beginner-friendly walkthrough of architecture, data models, auth, caching, and charts.
+
+
+## 👨‍💻 Author
+
+**Mahboob Alam**<br>
+B.Tech CSE | IKGPTU Kapurthala<br>
+GitHub: [MahboobGeeky](https://github.com/MahboobGeeky)
