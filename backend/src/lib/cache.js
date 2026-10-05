@@ -57,7 +57,7 @@ export async function cacheSet(key, value, ttl = 60) {
  * Delete all keys matching a glob pattern (e.g. "st:userId:stats:*").
  * Uses SCAN to avoid blocking Redis on large keyspaces.
  */
-export async function cacheInvalidatePattern(pattern) {
+async function cacheInvalidatePattern(pattern) {
   const redis = getRedis();
   if (!redis) return;
   try {
@@ -93,13 +93,6 @@ export async function invalidateCoursesCache(userId) {
  */
 export async function invalidateSessionsCache(userId) {
   await cacheInvalidatePattern(`${NS}:${userId}:sessions:*`);
-}
-
-/**
- * Invalidate terms cache for a user.
- */
-export async function invalidateTermsCache(userId) {
-  await cacheInvalidatePattern(`${NS}:${userId}:terms:*`);
 }
 
 /**

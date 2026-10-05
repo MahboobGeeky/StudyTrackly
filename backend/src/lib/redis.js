@@ -1,6 +1,9 @@
 import { Redis } from "ioredis";
 
-let _redis = null;
+// here _redis is client
+// server-> Redis, 
+// our backend-> client
+let _redis = null; // client
 let _initialized = false;
 
 /**
@@ -21,7 +24,7 @@ export function getRedis() {
   }
 
   try {
-    _redis = new Redis(url);
+    _redis = new Redis(url); // client = new Redis()
     _redis.on("error", (err) => console.error("[redis] Connection error:", err));
     console.log("[redis] Redis connected ✓");
   } catch (err) {
