@@ -25,7 +25,7 @@ const nav = [
 
 export function Sidebar({ email, onLogout }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 flex h-screen w-[17rem] shrink-0 flex-col border-r border-slate-800 bg-slate-950/80">
+    <aside className="fixed inset-y-0 left-0 z-40 flex h-screen w-68 shrink-0 flex-col border-r border-slate-800 bg-slate-950/80">
       <div className="border-b border-slate-800 p-5">
         <div className="flex items-center gap-3">
           <img
@@ -50,7 +50,7 @@ export function Sidebar({ email, onLogout }) {
               ].join(" ")
             }
           >
-            <Icon className="h-[1.125rem] w-[1.125rem] shrink-0 opacity-80" />
+            <Icon className="h-4.5 w-4.5 shrink-0 opacity-80" />
             {label}
           </NavLink>
         ))}

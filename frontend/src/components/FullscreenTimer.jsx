@@ -215,7 +215,7 @@ export function FullscreenTimer({
       : formatHMS(displaySeconds);
 
   return (
-    <div className="fixed inset-0 z-[200] flex flex-col bg-gradient-to-b from-indigo-950 via-slate-950 to-black text-white">
+    <div className="fixed inset-0 z-200 flex flex-col bg-linear-to-b from-indigo-950 via-slate-950 to-black text-white">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-2">
           <img src="/studytrackly-logo.svg" alt="" className="h-9 w-auto" />

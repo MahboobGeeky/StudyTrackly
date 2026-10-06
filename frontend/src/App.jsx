@@ -89,7 +89,7 @@ export default function App() {
                 <DataRoomPage />
               </ProtectedRoute>
             }
-          />
+          />        
           <Route
             path="/trophies"
             element={

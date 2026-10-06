@@ -75,7 +75,7 @@ export function HeaderToolbar({
             Session …
             <ChevronDown className="h-4 w-4 opacity-70" />
           </button>
-          <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 min-w-[220px] scale-95 opacity-0 transition group-hover:pointer-events-auto group-hover:scale-100 group-hover:opacity-100">
+          <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 min-w-55 scale-95 opacity-0 transition group-hover:pointer-events-auto group-hover:scale-100 group-hover:opacity-100">
             <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
               <p className="px-2 pb-1 text-[0.7rem] font-medium uppercase tracking-wide text-slate-500">
                 Courses
@@ -131,7 +131,7 @@ export function HeaderToolbar({
             <ChevronDown className="h-4 w-4 opacity-70" />
           </button>
           {smartOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 min-w-[220px] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl">
+            <div className="absolute right-0 top-full z-50 mt-2 min-w-55 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl">
               <p className="text-xs text-slate-500">Countdown (fullscreen)</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[1, 2, 3, 4].map((h) => (

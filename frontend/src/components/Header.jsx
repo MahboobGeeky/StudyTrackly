@@ -52,7 +52,7 @@ export function Header({ title, stats, breadcrumb }) {
       </div>
 
       <div className="flex flex-wrap gap-6 border-t border-slate-800/80 px-6 py-3 text-[0.8125rem] text-slate-400">
-        <div className="min-w-[180px]">
+        <div className="min-w-45">
           <div className="flex justify-between gap-2">
             <span>
               {formatMinutes(totalM)}/{goalH}h • {studyPct.toFixed(0)}% study
@@ -65,7 +65,7 @@ export function Header({ title, stats, breadcrumb }) {
             />
           </div>
         </div>
-        <div className="min-w-[160px]">
+        <div className="min-w-40">
           <div>
             {stats?.progress?.elapsedDays ?? 0}/{stats?.progress?.totalTermDays ?? 1} •{" "}
             {timePct.toFixed(0)}% elapsed

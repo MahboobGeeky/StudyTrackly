@@ -295,13 +295,6 @@ export function DashboardPage() {
 
             <TimeAnalysisCard />
 
-            <button
-              type="button"
-              onClick={() => void reload()}
-              className="w-full rounded-lg border border-slate-700 py-2.5 text-[0.9375rem] text-slate-400 hover:bg-slate-900"
-            >
-              Refresh stats
-            </button>
           </div>
         </div>
 
