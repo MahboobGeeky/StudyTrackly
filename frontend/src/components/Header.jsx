@@ -25,6 +25,7 @@ export function Header({ title, stats, breadcrumb }) {
   return (
     <header className="border-b border-slate-800 bg-slate-950/50">
       <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-6">
+        
         <div>
           <p className="text-[0.8125rem] uppercase tracking-wide text-slate-500">{line}</p>
           <div className="mt-2 flex items-center gap-2">
@@ -37,7 +38,7 @@ export function Header({ title, stats, breadcrumb }) {
               className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-300"
               aria-label="Help"
             >
-              <HelpCircle className="h-5 w-5" />
+              {/* <HelpCircle className="h-5 w-5" /> */}
             </button>
           </div>
         </div>
