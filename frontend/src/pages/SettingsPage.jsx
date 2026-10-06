@@ -68,7 +68,7 @@ export function SettingsPage() {
         >
           <h2 className="text-lg font-semibold">Profile</h2>
           <div>
-            <label className="text-xs text-slate-500">Display name</label>
+            <label className="text-xs text-slate-500">Name</label>
             <input
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
               value={displayName}
@@ -84,15 +84,7 @@ export function SettingsPage() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
-          <div>
-            <label className="text-xs text-slate-500">Trial end (date)</label>
-            <input
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-              value={trial}
-              onChange={(e) => setTrial(e.target.value)}
-            />
-          </div>
+          
           <div>
             <label className="text-xs text-slate-500">
               SmartTimer chime volume ({Math.round(timerVolume * 100)}%)
@@ -147,18 +139,6 @@ export function SettingsPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="text-xs text-slate-500">Academic level</label>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-              value={academic}
-              onChange={(e) => setAcademic(e.target.value)}
-              placeholder="e.g. university"
-            />
-          </div>
-          {s && (
-            <p className="text-xs text-slate-600">Settings id: {s.id}</p>
-          )}
           <button
             type="submit"
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"

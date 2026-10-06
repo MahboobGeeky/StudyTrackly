@@ -249,8 +249,10 @@ export function TermConfigPage() {
             )}
           </div>
         </section>
-
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-8">
+          
+          {/* Calendar feed */}
+          
+        {/* <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-8">
           <h2 className="text-lg font-semibold">Calendar feed</h2>
           <p className="mt-1 text-sm text-slate-500">Subscribe to sessions in your calendar app (ICS URL placeholder).</p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -262,7 +264,7 @@ export function TermConfigPage() {
           <p className="mt-4 max-w-xl text-xs text-slate-500">
             What&apos;s this? Export your sessions to Google Calendar, Apple Calendar, or any app that supports webcal/ICS subscriptions.
           </p>
-        </section>
+        </section> */}
 
         <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-8">
           <h2 className="text-lg font-semibold">Academic status</h2>
