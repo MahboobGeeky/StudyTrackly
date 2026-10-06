@@ -25,7 +25,7 @@ const nav = [
 
 export function Sidebar({ email, onLogout }) {
   return (
-    <aside className="flex w-[17rem] shrink-0 flex-col border-r border-slate-800 bg-slate-950/80">
+    <aside className="fixed inset-y-0 left-0 z-40 flex h-screen w-[17rem] shrink-0 flex-col border-r border-slate-800 bg-slate-950/80">
       <div className="border-b border-slate-800 p-5">
         <div className="flex items-center gap-3">
           <img
