@@ -180,7 +180,7 @@ export function SessionsPage() {
           <div>
             <label className="text-xs text-slate-500">Note</label>
             <textarea
-              className="mt-1 min-h-[80px] w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
               placeholder="e.g. Review lecture 1"
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -202,7 +202,7 @@ export function SessionsPage() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] text-left text-sm">
+            <table className="w-full min-w-200 text-left text-sm">
               <thead className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Date</th>
@@ -233,10 +233,10 @@ export function SessionsPage() {
                           {s.course?.name ?? "Unknown"}
                         </span>
                       </td>
-                      <td className="max-w-[120px] truncate px-3 py-2 text-slate-400">
+                      <td className="max-w-30 truncate px-3 py-2 text-slate-400">
                         {s.activity}
                       </td>
-                      <td className="max-w-[200px] truncate px-3 py-2 text-slate-500">
+                      <td className="max-w-50 truncate px-3 py-2 text-slate-500">
                         {s.note}
                       </td>
                       <td className="px-3 py-2">
